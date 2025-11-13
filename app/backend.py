@@ -26,7 +26,7 @@ class Fluid:
         return(self.name)
 
     def __eq__(self, other):
-        if isinstance(self, Fluid) and self.name == other.name:
+        if isinstance(other, Fluid) and self.name == other.name:
             return(True)
         return(False)
     

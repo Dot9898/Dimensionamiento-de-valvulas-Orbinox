@@ -24,6 +24,39 @@ def img_to_base64(img):
     img.save(buffer, format="PNG")
     return base64.b64encode(buffer.getvalue()).decode()
 
+def generate_input_fields(input_names_to_units = {}, text_input_boxes_labels = [], columns_spacing = [1, 1, 1]): #columns_spacing es [largo de los nombres, largo de cada text input, largo de las unidades]
+    number_of_text_inputs = len(text_input_boxes_labels)
+    columns_spacing[1] = columns_spacing[1]*number_of_text_inputs
+    for name in input_names_to_units:
+
+        names_column, inputs_column, units_column = st.columns(columns_spacing) #Las columnas se regeneran en cada fila (name) para alinear correctamente los nombres y los text input
+        with names_column:
+            st.write(name)
+
+        with inputs_column:
+            inputs_subcolumns = st.columns([1]*number_of_text_inputs)
+            for index in range(len(inputs_subcolumns)):
+                with inputs_subcolumns[index]:
+                    label = text_input_boxes_labels[index]
+                    key = name + '_' + label
+                    st.text_input(key, 
+                                  label_visibility = 'collapsed', 
+                                  placeholder = label, 
+                                  key = key)
+                    
+        with units_column:
+            units = input_names_to_units[name]
+            if len(units) >= 2:
+                key = name + '_unit'
+                st.selectbox(key, 
+                             units, 
+                             label_visibility = 'collapsed', 
+                             accept_new_options = False, 
+                             placeholder = 'unidad', 
+                             key = key)
+            elif len(units) == 1:
+                st.write(units[0])
+
 def generate_vertical_divider(height):
     st.html(
         f'''
@@ -74,12 +107,12 @@ def generate_header_and_dropdowns(valve_types, fluids):
 
     with valve_selection_column:
         valve = st.selectbox('Tipo de válvula', 
-                            valve_types, 
-                            label_visibility = 'collapsed', 
-                            accept_new_options = False, 
-                            index = None, 
-                            placeholder = 'Tipo de válvula', 
-                            key = 'valve_dropdown')
+                             valve_types, 
+                             label_visibility = 'collapsed', 
+                             accept_new_options = False, 
+                             index = None, 
+                             placeholder = 'Tipo de válvula', 
+                             key = 'valve_dropdown')
 
     with fluid_selection_column:
         fluid = st.selectbox('Fluido', 
@@ -87,12 +120,31 @@ def generate_header_and_dropdowns(valve_types, fluids):
                              label_visibility = 'collapsed', 
                              accept_new_options = False, 
                              index = None, 
-                             placeholder = 'Tipo de fluido', 
+                             placeholder = 'Fluido', 
                              key = 'fluid_dropdown')
 
+#def generate_triple_input_fields()
 
-def lo_que_sigue():
-    names_column, inputs_column = st.columns([1, 2])
+def generate_all_input_fields():
+
+    generate_input_fields(input_names_to_units = {'Caudal': ['km', 'm', 'cm'], 
+                                                  'Presión de entrada': ['test1', 'test2'], 
+                                                  'Presión de salida': ['abc'], 
+                                                  'Diferencia de presión': ['3']}, 
+                          text_input_boxes_labels = ['mínimo', 'normal', 'máximo'], 
+                          columns_spacing = [2, 1, 1])
+    
+    generate_input_fields(input_names_to_units = {'Diámetro nominal': ['km', 'm', 'cm'], 
+                                                  'Temperatura': ['test1', 'test2'], 
+                                                  'Gravedad específica': ['abc'], 
+                                                  'Presión de vapor': ['3'], 
+                                                  'Viscosidad': ['centistokes'], 
+                                                  'Velocidad del sonido': ['m/s']}, 
+                          text_input_boxes_labels = [''], 
+                          columns_spacing = [2, 3, 1])
+
+
+
 
 
 #-----------------------------------------------------------------------------------------------------------------------------------------------
@@ -111,10 +163,10 @@ input_column, separator_column, output_column = st.columns([19.5, 1, 19.5])
 
 with input_column:
     generate_header_and_dropdowns(valve_types, fluids)
+    generate_all_input_fields()
 
 with separator_column:
     generate_vertical_divider(height = 640)
-
 
 
 
