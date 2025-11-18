@@ -12,7 +12,7 @@ from math import pi
 PI = pi
 ROOT_PATH = Path(__file__).resolve().parent.parent
 DATA_PATH = ROOT_PATH / 'data'
-VALVE_TYPE_FACTORS = {'Mariposa': 0.7, 'Pinch': 1.0}
+VALVE_REYNOLDS_FACTOR = {'Mariposa': 0.7, 'Pinch PA': 1.0}
 
 
 class Fluid:
@@ -133,10 +133,10 @@ def calculate_flow_coefficient_Cv(specific_gravity,       #Dimensionless
 def calculate_Reynolds_number(flow,        #GPM
                               diameter,    #inches
                               viscosity,   #centistokes
-                              valve_type):
+                              valve):
     
-    valve_type_factor = VALVE_TYPE_FACTORS[valve_type]
-    Reynolds_number = 3160 * flow / (diameter * viscosity) * valve_type_factor #???????????
+    valve_factor = VALVE_REYNOLDS_FACTOR[valve.name]
+    Reynolds_number = 3160 * flow / (diameter * viscosity) * valve_factor #???????????
     return(Reynolds_number)
 
 def calculate_pressure_recovery_factor_FL(in_pressure,  #PSIA
