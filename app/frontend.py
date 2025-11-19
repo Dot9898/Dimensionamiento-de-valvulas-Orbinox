@@ -12,14 +12,21 @@ ROOT_PATH = Path(__file__).resolve().parent.parent
 IMG_PATH = ROOT_PATH / 'img'
 LOGO_WIDTH = 200
 
-def do_nothing():
-    pass
+
+#Utilities
 
 def float_cast(input):
     try:
         return(float(input))
-    except:
+    except (ValueError, TypeError):
         return(None)
+
+def substract_handling_type(x, y):
+    x = float_cast(x)
+    y = float_cast(y)
+    if x is None or y is None:
+        return(None)
+    return(x - y)
     
 @st.cache_resource
 def load_images():
@@ -30,12 +37,70 @@ def load_images():
 def img_to_base64(img):
     buffer = BytesIO()
     img.save(buffer, format="PNG")
-    return base64.b64encode(buffer.getvalue()).decode()
+    return(base64.b64encode(buffer.getvalue()).decode())
 
 def init_session_state(defaults):
     for key in defaults:
         if key not in st.session_state:
             st.session_state[key] = defaults[key]
+
+def get_min_normal_max_casted_to_float(key):
+    casted_vars = {'min': float_cast(st.session_state[key + '_mínimo']), 
+                   'normal': float_cast(st.session_state[key + '_normal']), 
+                   'max': float_cast(st.session_state[key + '_máximo'])}
+    return(casted_vars)
+
+
+#Callbacks
+
+def do_nothing():
+    pass
+
+def generic_callback(callback):
+    callback()
+    st.session_state['rerun'] = True
+
+def disable_pressure_differential(): #Presión de salida callback
+    
+    is_disabled = False
+    
+    for key in ['_Presión de salida_mínimo', '_Presión de salida_normal', '_Presión de salida_máximo']:
+        if float_cast(st.session_state[key]) is not None: #Si al menos uno de los inputs es un float, desactivar los otros botones
+            is_disabled = True
+
+    for key in ['Diferencia de presión_mínimo', 'Diferencia de presión_normal', 'Diferencia de presión_máximo']:
+        st.session_state[key + '_is_disabled'] = is_disabled
+
+def disable_out_pressure(): #Presión de salida callback
+    
+    is_disabled = False
+    
+    for key in ['_Diferencia de presión_mínimo', '_Diferencia de presión_normal', '_Diferencia de presión_máximo']:
+        if float_cast(st.session_state[key]) is not None:
+            is_disabled = True
+
+    for key in ['Presión de salida_mínimo', 'Presión de salida_normal', 'Presión de salida_máximo']:
+        st.session_state[key + '_is_disabled'] = is_disabled
+
+def disable_buttons_after_temperature(): #Temperatura callback
+    
+    fluid = st.session_state['Fluido']
+    if fluid is None:
+        return
+    if fluid.name == 'Otro':
+        return
+
+    is_disabled = False
+    
+    if float_cast(st.session_state['_Temperatura']) is not None:
+        is_disabled = True
+
+    keys = ['Gravedad específica', 'Presión de vapor', 'Viscosidad', 'Velocidad del sonido']
+    for key in keys:
+            st.session_state[key + '_is_disabled'] = is_disabled
+
+
+#Frontend
 
 def vertical_divider(height):
     st.html(
@@ -51,12 +116,17 @@ def vertical_divider(height):
         '''
     )
 
-def generate_input_fields(input_names_to_units = {}, text_input_boxes_labels = [], columns_spacing = [1, 1, 1], callback = do_nothing): #columns_spacing es [largo de los nombres, largo de cada text input, largo de las unidades]
+def generate_input_fields(input_names_to_units, 
+                          text_input_boxes_labels = [''], 
+                          columns_spacing = [2, 3, 1], 
+                          can_be_disabled = False, 
+                          callback = do_nothing): #columns_spacing es [largo de los nombres, largo de cada text input, largo de las unidades]
     number_of_text_inputs = len(text_input_boxes_labels)
     columns_spacing[1] = columns_spacing[1]*number_of_text_inputs
+    
     for name in input_names_to_units:
-
         names_column, inputs_column, units_column = st.columns(columns_spacing) #Las columnas se regeneran en cada fila (name) para alinear correctamente los nombres y los text input
+        
         with names_column:
             st.write(name)
 
@@ -64,16 +134,27 @@ def generate_input_fields(input_names_to_units = {}, text_input_boxes_labels = [
             inputs_subcolumns = st.columns([1]*number_of_text_inputs)
             for index in range(len(inputs_subcolumns)):
                 with inputs_subcolumns[index]:
+
                     label = text_input_boxes_labels[index]
                     if label != '':
                         key = name + '_' + label
                     else:
                         key = name
+
+                    disabled_state = False
+                    if can_be_disabled:
+                        disabled_state = st.session_state[key + '_is_disabled']
+
+                    if float_cast(st.session_state[key]) is not None:
+                        label = st.session_state[key]
+                        
                     st.session_state[key] = st.text_input(key, 
                                                           value = st.session_state[key], 
                                                           label_visibility = 'collapsed', 
                                                           placeholder = label, 
-                                                          on_change = callback, 
+                                                          on_change = generic_callback,
+                                                          args = [callback], 
+                                                          disabled = disabled_state, 
                                                           key = '_' + key)
                     
         with units_column:
@@ -144,28 +225,42 @@ def generate_header_and_dropdowns(valves, fluids):
 
 def generate_all_input_fields():
 
-    generate_input_fields(input_names_to_units = {'Caudal': ['km', 'm', 'cm'], 
-                                                  'Presión de entrada': ['test1', 'test2'], 
-                                                  'Presión de salida': ['abc'], 
-                                                  'Diferencia de presión': ['3']}, 
+    generate_input_fields(input_names_to_units = {'Caudal': ['km', 'm', 'cm']}, 
                           text_input_boxes_labels = ['mínimo', 'normal', 'máximo'], 
                           columns_spacing = [2, 1, 1])
     
-    generate_input_fields(input_names_to_units = {'Diámetro nominal': ['km', 'm', 'cm']}, 
-                          text_input_boxes_labels = [''], 
-                          columns_spacing = [2, 3, 1])
+    generate_input_fields(input_names_to_units = {'Presión de entrada': ['test1', 'test2']}, 
+                          text_input_boxes_labels = ['mínimo', 'normal', 'máximo'], 
+                          columns_spacing = [2, 1, 1])
+    
+    generate_input_fields(input_names_to_units = {'Presión de salida': ['abc']}, 
+                          text_input_boxes_labels = ['mínimo', 'normal', 'máximo'], 
+                          columns_spacing = [2, 1, 1], 
+                          can_be_disabled = True, 
+                          callback = disable_pressure_differential)
+    
+    generate_input_fields(input_names_to_units = {'Diferencia de presión': ['3']}, 
+                          text_input_boxes_labels = ['mínimo', 'normal', 'máximo'], 
+                          can_be_disabled = True, 
+                          columns_spacing = [2, 1, 1,], 
+                          callback = disable_out_pressure)
+    
+    generate_input_fields(input_names_to_units = {'Diámetro nominal': ['km', 'm', 'cm']})
     
     generate_input_fields(input_names_to_units = {'Temperatura': ['test1', 'test2']}, 
-                          text_input_boxes_labels = [''], 
-                          columns_spacing = [2, 3, 1], 
-                          callback = do_nothing)
+                          callback = disable_buttons_after_temperature)
 
-    generate_input_fields(input_names_to_units = {'Gravedad específica': ['abc'], 
-                                                  'Presión de vapor': ['3'], 
-                                                  'Viscosidad': ['centistokes'], 
-                                                  'Velocidad del sonido': ['m/s']}, 
-                          text_input_boxes_labels = [''], 
-                          columns_spacing = [2, 3, 1])
+    generate_input_fields(input_names_to_units = {'Gravedad específica': ['abc']}, 
+                          can_be_disabled = True)
+    
+    generate_input_fields(input_names_to_units = {'Presión de vapor': ['3']}, 
+                          can_be_disabled = True)
+    
+    generate_input_fields(input_names_to_units = {'Viscosidad': ['centistokes']}, 
+                          can_be_disabled = True)
+    
+    generate_input_fields(input_names_to_units = {'Velocidad del sonido': ['m/s']}, 
+                          can_be_disabled = True)
 
 
 #-----------------------------------------------------------------------------------------------------------------------------------------------
@@ -176,21 +271,32 @@ fluids = backend.get_fluids()
 images = load_images()
 st.set_page_config(layout = 'wide')
 
-names = ['Válvula',
-         'Fluido',
-         'Caudal_mínimo', 'Caudal_normal', 'Caudal_máximo', 'Caudal_unit', 
-         'Presión de entrada_mínimo', 'Presión de entrada_normal', 'Presión de entrada_máximo', 'Presión de entrada_unit', 
-         'Presión de salida_mínimo', 'Presión de salida_normal', 'Presión de salida_máximo', 'Presión de salida_unit', 
-         'Diferencia de presión_mínimo', 'Diferencia de presión_normal', 'Diferencia de presión_máximo', 'Diferencia de presión_unit', 
-         'Diámetro nominal', 'Diámetro nominal_unit', 
-         'Temperatura','Temperatura_unit', 
-         'Gravedad específica', 'Gravedad específica_unit', 
-         'Presión de vapor', 'Presión de vapor_unit', 
-         'Viscosidad', 'Viscosidad_unit', 
-         'Velocidad del sonido', 'Velocidad del sonido_unit']
+keys = ['Válvula',
+        'Fluido',
+        'Caudal_mínimo', 'Caudal_normal', 'Caudal_máximo', 'Caudal_unit', 
+        'Presión de entrada_mínimo', 'Presión de entrada_normal', 'Presión de entrada_máximo', 'Presión de entrada_unit', 
+        'Presión de salida_mínimo', 'Presión de salida_normal', 'Presión de salida_máximo', 'Presión de salida_unit', 
+        'Diferencia de presión_mínimo', 'Diferencia de presión_normal', 'Diferencia de presión_máximo', 'Diferencia de presión_unit', 
+        'Diámetro nominal', 'Diámetro nominal_unit', 
+        'Temperatura','Temperatura_unit', 
+        'Gravedad específica', 'Gravedad específica_unit', 
+        'Presión de vapor', 'Presión de vapor_unit', 
+        'Viscosidad', 'Viscosidad_unit', 
+        'Velocidad del sonido', 'Velocidad del sonido_unit']
+
+text_input_disablers_keys = ['Presión de salida_mínimo_is_disabled', 'Presión de salida_normal_is_disabled', 'Presión de salida_máximo_is_disabled', 
+                             'Diferencia de presión_mínimo_is_disabled', 'Diferencia de presión_normal_is_disabled', 'Diferencia de presión_máximo_is_disabled', 
+                             'Gravedad específica_is_disabled', 
+                             'Presión de vapor_is_disabled', 
+                             'Viscosidad_is_disabled', 
+                             'Velocidad del sonido_is_disabled']
+
 defaults = {}
-for key in names:
+for key in keys:
     defaults[key] = None
+for key in text_input_disablers_keys:
+    defaults[key] = False
+defaults['rerun'] = False
 init_session_state(defaults)
 
 
@@ -206,11 +312,33 @@ with input_column:
     generate_header_and_dropdowns(valves, fluids)
     generate_all_input_fields()
 
+#Variable assignation for current inputs 
 
+#USAR FUNCIÓN PARA ASIGNAR VARIABLES DEL INPUT
 valve = st.session_state['Válvula']
 fluid = st.session_state['Fluido']
-flow = {'min': float_cast(st.session_state['Caudal_mínimo']), 'normal': float_cast(st.session_state['Caudal_normal']), 'max': float_cast(st.session_state['Caudal_máximo'])}
-in_pressure = {'min': float_cast(st.session_state['Presión de entrada_mínimo']), 'normal': float_cast(st.session_state['Presión de entrada_normal']), 'max': float_cast(st.session_state['Presión de entrada_máximo'])}
+flow = get_min_normal_max_casted_to_float('Caudal')
+in_pressure = get_min_normal_max_casted_to_float('Presión de entrada')
+
+if st.session_state['Diferencia de presión_normal_is_disabled']:
+    
+    out_pressure = get_min_normal_max_casted_to_float('Presión de salida')
+
+    st.session_state['Diferencia de presión_mínimo'] = substract_handling_type(in_pressure['min'], out_pressure['min'])
+    st.session_state['Diferencia de presión_normal'] = substract_handling_type(in_pressure['normal'], out_pressure['normal'])
+    st.session_state['Diferencia de presión_máximo'] = substract_handling_type(in_pressure['max'], out_pressure['max'])
+    pressure_differential = get_min_normal_max_casted_to_float('Diferencia de presión')
+
+if st.session_state['Presión de salida_normal_is_disabled']:
+    
+    pressure_differential = get_min_normal_max_casted_to_float('Diferencia de presión')
+    
+    st.session_state['Presión de salida'] = substract_handling_type(in_pressure['min'], pressure_differential['min'])
+    st.session_state['Presión de salida'] = substract_handling_type(in_pressure['normal'], pressure_differential['normal'])
+    st.session_state['Presión de salida'] = substract_handling_type(in_pressure['max'], pressure_differential['max'])
+    
+    out_pressure = get_min_normal_max_casted_to_float('Presión de salida')
+
 out_pressure = {'min': float_cast(st.session_state['Presión de salida_mínimo']), 'normal': float_cast(st.session_state['Presión de salida_normal']), 'max': float_cast(st.session_state['Presión de salida_máximo'])}
 pressure_differential = {'min': float_cast(st.session_state['Diferencia de presión_mínimo']), 'normal': float_cast(st.session_state['Diferencia de presión_normal']), 'max': float_cast(st.session_state['Diferencia de presión_máximo'])}
 diameter = float_cast(st.session_state['Diámetro nominal'])
@@ -234,9 +362,14 @@ for quantity in ['min', 'normal', 'max']:
 
 Cv
 
+
+#---------not final code
+
 Reynolds_number = {}
 for quantity in ['min, normal, max']:
-    Reynolds_number[quantity] = backend.
+    #Reynolds_number[quantity] = backend.
+    pass
+
 
 def calculate_Reynolds_number(flow,        #GPM
                               diameter,    #inches
@@ -256,10 +389,14 @@ def calculate_pressure_recovery_factor_FL(in_pressure,  #PSIA
 
 
 
+st.session_state['Diferencia de presión_mínimo']
+
+#--------------
 
 
-
-
+if st.session_state['rerun']: #Reruns on any text input to avoid lag
+    st.session_state['rerun'] = False
+    st.rerun()
 
 
 
