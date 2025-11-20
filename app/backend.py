@@ -12,7 +12,6 @@ from math import pi
 PI = pi
 ROOT_PATH = Path(__file__).resolve().parent.parent
 DATA_PATH = ROOT_PATH / 'data'
-VALVE_REYNOLDS_FACTOR = {'Mariposa': 0.7, 'Pinch PA': 1.0}
 
 
 class Fluid:
@@ -21,7 +20,10 @@ class Fluid:
 
     def __init__(self, name):
         self.name = name
-        #self.specific_gravity = ... etc viscosidad vel del sonido
+        self.specific_gravity = {}
+        self.vapor_pressure = {}
+        self.viscosity = {}
+        self.speed_of_sound = {}
     
     def __repr__(self):
         return(self.name)
@@ -40,8 +42,10 @@ class Valve:
 
     def __init__(self, name):
         self.name = name
+        self.Reynolds_factor = 1
         self.FL = {}
         self.Cv = {}
+#VALVE_REYNOLDS_FACTOR = {'Mariposa': 0.7, 'Pinch PA': 1.0}
 
     def __repr__(self):
         return(self.name)
@@ -51,6 +55,10 @@ def clean_string(string):
     string = unidecode(string) #Elimina acentos
     string = string.lower()
     return(string)
+
+def closest_in_list(values_list, number):
+    closest = min(values_list, key = lambda value: abs(value - number))
+    return(closest)
 
 def _load_valves():
     openings_percentages = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
@@ -71,7 +79,7 @@ def _load_valves():
     
     for valve in Valve.all:
         header = True
-        with open(DATA_PATH / 'Cv_tables' / ('Cv_vs_opening_' + valve.name + '.csv'), mode ='r', encoding = 'utf-8') as file:
+        with open(DATA_PATH / 'Cv_vs_opening' / (valve.name + '.csv'), mode ='r', encoding = 'utf-8') as file:
             csv_values = csv.reader(file)
             for line in csv_values:
                 if header:
@@ -95,31 +103,74 @@ def get_valves():
 
 def _load_fluids():
 
-    with open(DATA_PATH / 'fluid_data.csv', mode ='r', encoding = 'utf-8') as file:
+    fluid_names = []
+    with open(DATA_PATH / 'fluid_names.csv', mode ='r', encoding = 'utf-8') as file:
         csv_values = csv.reader(file)
         for line in csv_values:
-            if csv_values.line_num == 1: #Header
+            name = line[0]
+            fluid_names.append(name)
+
+    for name in fluid_names:
+        fluid = Fluid(name)
+        Fluid.all.append(fluid)
+
+    header = True
+    with open(DATA_PATH / 'specific_gravity_vs_temperature' / (fluid.name + '.csv'), mode ='r', encoding = 'utf-8') as file:
+        csv_values = csv.reader(file)
+        for line in csv_values:
+            if header:
+                header = False
                 continue
-            fluid_name = line[0]
-            fluid = Fluid(fluid_name)
-            Fluid.all.append(fluid)
+            temperature = float(line[0])
+            specific_gravity = float(line[1])
+            fluid.specific_gravity[temperature] = specific_gravity
     
+    header = True
+    with open(DATA_PATH / 'vapor_pressure_vs_temperature' / (fluid.name + '.csv'), mode ='r', encoding = 'utf-8') as file:
+        csv_values = csv.reader(file)
+        for line in csv_values:
+            if header:
+                header = False
+                continue
+            temperature = float(line[0])
+            vapor_pressure = float(line[1])
+            fluid.vapor_pressure[temperature] = vapor_pressure
+    
+    header = True
+    with open(DATA_PATH / 'speed_of_sound_vs_temperature' / (fluid.name + '.csv'), mode ='r', encoding = 'utf-8') as file:
+        csv_values = csv.reader(file)
+        for line in csv_values:
+            if header:
+                header = False
+                continue
+            temperature = float(line[0])
+            speed_of_sound = float(line[1])
+            fluid.speed_of_sound[temperature] = speed_of_sound
+    
+    header = True
+    with open(DATA_PATH / 'viscosity_vs_temperature' / (fluid.name + '.csv'), mode ='r', encoding = 'utf-8') as file:
+        csv_values = csv.reader(file)
+        for line in csv_values:
+            if header:
+                header = False
+                continue
+            temperature = float(line[0])
+            viscosity = float(line[1])
+            fluid.viscosity[temperature] = viscosity
+    
+
     fluids = sorted(Fluid.all, key = lambda fluid: clean_string(fluid.name))
+
+    otro = Fluid('Otro')
+    Fluid.all.append(otro)
+    fluids.append(otro)
+
     return(fluids)
 
 @lru_cache(maxsize = 1)
 def get_fluids(edit_this_string_to_force_cache_clear_in_streamlit_cloud = 'v1'):
     return(_load_fluids())
 
-
-def calculate_specific_gravity(temperature, fluid):  #Kelvin? #La presión es negligible
-    if temperature is None or fluid is None:
-        return(None)
-    
-    if fluid.name == 'Agua':
-        specific_gravity = 1.0157 - 6.81e-4 * temperature #Aproximación lineal, <2% error entre 0 y 200 C
-
-    return(specific_gravity)
 
 def calculate_flow_coefficient_Cv(specific_gravity,       #Dimensionless
                                   flow,                   #GPM, gallons per minute
@@ -135,8 +186,7 @@ def calculate_Reynolds_number(flow,        #GPM
                               viscosity,   #centistokes
                               valve):
     
-    valve_factor = VALVE_REYNOLDS_FACTOR[valve.name]
-    Reynolds_number = 3160 * flow / (diameter * viscosity) * valve_factor #???????????
+    Reynolds_number = 3160 * flow / (diameter * viscosity) * valve.Reynolds_factor #???????????
     return(Reynolds_number)
 
 def calculate_pressure_recovery_factor_FL(in_pressure,  #PSIA

@@ -27,7 +27,7 @@ def substract_handling_type(x, y):
     if x is None or y is None:
         return(None)
     return(x - y)
-    
+
 @st.cache_resource
 def load_images():
     images = {}
@@ -50,6 +50,71 @@ def get_min_normal_max_casted_to_float(key):
                    'max': float_cast(st.session_state[key + '_máximo'])}
     return(casted_vars)
 
+def assign_all_input_variables():
+
+    valve = st.session_state['Válvula']
+    fluid = st.session_state['Fluido']
+    flow = get_min_normal_max_casted_to_float('Caudal')
+    in_pressure = get_min_normal_max_casted_to_float('Presión de entrada')
+
+    if st.session_state['Diferencia de presión_normal_is_disabled']:
+        
+        out_pressure = get_min_normal_max_casted_to_float('Presión de salida')
+
+        st.session_state['Diferencia de presión_mínimo'] = substract_handling_type(in_pressure['min'], out_pressure['min'])
+        st.session_state['Diferencia de presión_normal'] = substract_handling_type(in_pressure['normal'], out_pressure['normal'])
+        st.session_state['Diferencia de presión_máximo'] = substract_handling_type(in_pressure['max'], out_pressure['max'])
+        pressure_differential = get_min_normal_max_casted_to_float('Diferencia de presión')
+
+    elif st.session_state['Presión de salida_normal_is_disabled']:
+        
+        pressure_differential = get_min_normal_max_casted_to_float('Diferencia de presión')
+        
+        st.session_state['Presión de salida'] = substract_handling_type(in_pressure['min'], pressure_differential['min'])
+        st.session_state['Presión de salida'] = substract_handling_type(in_pressure['normal'], pressure_differential['normal'])
+        st.session_state['Presión de salida'] = substract_handling_type(in_pressure['max'], pressure_differential['max'])
+        
+        out_pressure = get_min_normal_max_casted_to_float('Presión de salida')
+    
+    else:
+        out_pressure = get_min_normal_max_casted_to_float('Presión de salida')
+        pressure_differential = get_min_normal_max_casted_to_float('Diferencia de presión')
+
+    diameter = float_cast(st.session_state['Diámetro nominal'])
+    temperature = float_cast(st.session_state['Temperatura'])
+    
+    return(valve, fluid, flow, in_pressure, out_pressure, pressure_differential, diameter, temperature)
+
+def assign_database_variable(fluid, temperature, key):
+    
+    if st.session_state[key] is not None:
+        return
+    if fluid is None or temperature is None:
+        st.session_state[key] = None
+        return
+    if fluid.name == 'Otro':
+        return
+    
+    key_to_fluid_data = {'Gravedad específica': fluid.specific_gravity, 
+                         'Presión de vapor': fluid.vapor_pressure, 
+                         'Viscosidad': fluid.viscosity, 
+                         'Velocidad del sonido': fluid.speed_of_sound}
+    
+    temperature_to_data = key_to_fluid_data[key]
+    
+    available_temperatures = temperature_to_data.keys()
+    closest_temperature = backend.closest_in_list(available_temperatures, temperature)
+    data_value = temperature_to_data[closest_temperature]
+    st.session_state[key] = data_value
+
+    return(data_value)
+
+def assign_all_database_variables():
+    specific_gravity = assign_database_variable(fluid, temperature, 'Gravedad específica')
+    vapor_pressure = assign_database_variable(fluid, temperature, 'Presión de vapor')
+    viscosity = assign_database_variable(fluid, temperature, 'Viscosidad')
+    speed_of_sound = assign_database_variable(fluid, temperature, 'Velocidad del sonido')
+    return(specific_gravity, vapor_pressure, viscosity, speed_of_sound)
 
 #Callbacks
 
@@ -82,22 +147,19 @@ def disable_out_pressure(): #Presión de salida callback
     for key in ['Presión de salida_mínimo', 'Presión de salida_normal', 'Presión de salida_máximo']:
         st.session_state[key + '_is_disabled'] = is_disabled
 
-def disable_buttons_after_temperature(): #Temperatura callback
-    
+def disable_some_data_inputs_if_fluid_is_selected(): #Fluido callback
+
+    is_disabled = True
     fluid = st.session_state['Fluido']
     if fluid is None:
-        return
-    if fluid.name == 'Otro':
-        return
-
-    is_disabled = False
+        is_disabled = False
+    elif fluid.name == 'Otro':
+        is_disabled = False
     
-    if float_cast(st.session_state['_Temperatura']) is not None:
-        is_disabled = True
-
     keys = ['Gravedad específica', 'Presión de vapor', 'Viscosidad', 'Velocidad del sonido']
     for key in keys:
             st.session_state[key + '_is_disabled'] = is_disabled
+
 
 
 #Frontend
@@ -211,52 +273,55 @@ def generate_header_and_dropdowns(valves, fluids):
                      accept_new_options = False, 
                      index = None, 
                      placeholder = 'Válvula', 
+                     on_change = generic_callback, 
+                     args = [do_nothing], 
                      key = 'Válvula')
 
     with fluid_selection_column:
         st.selectbox('Fluido', 
-                     fluids + ['Otro'], 
+                     fluids, 
                      label_visibility = 'collapsed', 
                      accept_new_options = False, 
                      index = None, 
                      placeholder = 'Fluido', 
+                     on_change = generic_callback, 
+                     args = [disable_some_data_inputs_if_fluid_is_selected], 
                      key = 'Fluido')
 
 
 def generate_all_input_fields():
 
-    generate_input_fields(input_names_to_units = {'Caudal': ['km', 'm', 'cm']}, 
+    generate_input_fields(input_names_to_units = {'Caudal': ['GPM']}, 
                           text_input_boxes_labels = ['mínimo', 'normal', 'máximo'], 
                           columns_spacing = [2, 1, 1])
     
-    generate_input_fields(input_names_to_units = {'Presión de entrada': ['test1', 'test2']}, 
+    generate_input_fields(input_names_to_units = {'Presión de entrada': ['PSIA']}, 
                           text_input_boxes_labels = ['mínimo', 'normal', 'máximo'], 
                           columns_spacing = [2, 1, 1])
     
-    generate_input_fields(input_names_to_units = {'Presión de salida': ['abc']}, 
+    generate_input_fields(input_names_to_units = {'Presión de salida': ['PSIA']}, 
                           text_input_boxes_labels = ['mínimo', 'normal', 'máximo'], 
                           columns_spacing = [2, 1, 1], 
                           can_be_disabled = True, 
                           callback = disable_pressure_differential)
     
-    generate_input_fields(input_names_to_units = {'Diferencia de presión': ['3']}, 
+    generate_input_fields(input_names_to_units = {'Diferencia de presión': ['PSI']}, 
                           text_input_boxes_labels = ['mínimo', 'normal', 'máximo'], 
                           can_be_disabled = True, 
                           columns_spacing = [2, 1, 1,], 
                           callback = disable_out_pressure)
     
-    generate_input_fields(input_names_to_units = {'Diámetro nominal': ['km', 'm', 'cm']})
+    generate_input_fields(input_names_to_units = {'Diámetro nominal': ['in']})
     
-    generate_input_fields(input_names_to_units = {'Temperatura': ['test1', 'test2']}, 
-                          callback = disable_buttons_after_temperature)
+    generate_input_fields(input_names_to_units = {'Temperatura': ['℃']})
 
-    generate_input_fields(input_names_to_units = {'Gravedad específica': ['abc']}, 
+    generate_input_fields(input_names_to_units = {'Gravedad específica': ['']}, 
                           can_be_disabled = True)
     
-    generate_input_fields(input_names_to_units = {'Presión de vapor': ['3']}, 
+    generate_input_fields(input_names_to_units = {'Presión de vapor': ['PSIA']}, 
                           can_be_disabled = True)
     
-    generate_input_fields(input_names_to_units = {'Viscosidad': ['centistokes']}, 
+    generate_input_fields(input_names_to_units = {'Viscosidad': ['cSt']}, 
                           can_be_disabled = True)
     
     generate_input_fields(input_names_to_units = {'Velocidad del sonido': ['m/s']}, 
@@ -269,7 +334,9 @@ def generate_all_input_fields():
 valves = backend.get_valves()
 fluids = backend.get_fluids()
 images = load_images()
-st.set_page_config(layout = 'wide')
+
+
+#Key initialization
 
 keys = ['Válvula',
         'Fluido',
@@ -300,6 +367,9 @@ defaults['rerun'] = False
 init_session_state(defaults)
 
 
+#Frontend
+
+st.set_page_config(layout = 'wide')
 
 generate_title_and_logo(images)
 
@@ -312,43 +382,26 @@ with input_column:
     generate_header_and_dropdowns(valves, fluids)
     generate_all_input_fields()
 
-#Variable assignation for current inputs 
 
-#USAR FUNCIÓN PARA ASIGNAR VARIABLES DEL INPUT
-valve = st.session_state['Válvula']
-fluid = st.session_state['Fluido']
-flow = get_min_normal_max_casted_to_float('Caudal')
-in_pressure = get_min_normal_max_casted_to_float('Presión de entrada')
+valve, fluid, flow, in_pressure, out_pressure, pressure_differential, diameter, temperature = assign_all_input_variables()
+specific_gravity, vapor_pressure, viscosity, speed_of_sound = assign_all_database_variables()
 
-if st.session_state['Diferencia de presión_normal_is_disabled']:
+def calculate_specific_gravity(fluid, temperature):  #Kelvin? #La presión es negligible
+    if fluid is None or temperature is None:
+        return(None)
+
     
-    out_pressure = get_min_normal_max_casted_to_float('Presión de salida')
+    if fluid.name == 'Agua':
+        specific_gravity = 1.0157 - 6.81e-4 * temperature #Aproximación lineal, <2% error entre 0 y 200 C
 
-    st.session_state['Diferencia de presión_mínimo'] = substract_handling_type(in_pressure['min'], out_pressure['min'])
-    st.session_state['Diferencia de presión_normal'] = substract_handling_type(in_pressure['normal'], out_pressure['normal'])
-    st.session_state['Diferencia de presión_máximo'] = substract_handling_type(in_pressure['max'], out_pressure['max'])
-    pressure_differential = get_min_normal_max_casted_to_float('Diferencia de presión')
-
-if st.session_state['Presión de salida_normal_is_disabled']:
-    
-    pressure_differential = get_min_normal_max_casted_to_float('Diferencia de presión')
-    
-    st.session_state['Presión de salida'] = substract_handling_type(in_pressure['min'], pressure_differential['min'])
-    st.session_state['Presión de salida'] = substract_handling_type(in_pressure['normal'], pressure_differential['normal'])
-    st.session_state['Presión de salida'] = substract_handling_type(in_pressure['max'], pressure_differential['max'])
-    
-    out_pressure = get_min_normal_max_casted_to_float('Presión de salida')
-
-out_pressure = {'min': float_cast(st.session_state['Presión de salida_mínimo']), 'normal': float_cast(st.session_state['Presión de salida_normal']), 'max': float_cast(st.session_state['Presión de salida_máximo'])}
-pressure_differential = {'min': float_cast(st.session_state['Diferencia de presión_mínimo']), 'normal': float_cast(st.session_state['Diferencia de presión_normal']), 'max': float_cast(st.session_state['Diferencia de presión_máximo'])}
-diameter = float_cast(st.session_state['Diámetro nominal'])
-temperature = float_cast(st.session_state['Temperatura'])
+    return(specific_gravity)
 
 
 
-if st.session_state['Gravedad específica'] is None:
-    st.session_state['Gravedad específica'] = backend.calculate_specific_gravity(temperature, fluid)  #Kelvin #La presión es negligible
-specific_gravity = float_cast(st.session_state['Gravedad específica'])
+
+
+
+
 
 #need backend functions from data
 vapor_pressure = float_cast(st.session_state['Presión de vapor'])
@@ -367,7 +420,7 @@ Cv
 
 Reynolds_number = {}
 for quantity in ['min, normal, max']:
-    #Reynolds_number[quantity] = backend.
+    #Reynolds_number[quantity] = backend.calculate_reynolds_number(flow[quantity], diameter, )
     pass
 
 
