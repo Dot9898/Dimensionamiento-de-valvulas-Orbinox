@@ -27,28 +27,31 @@ class Fluid:
     
     def __repr__(self):
         return(self.name)
-
-    #def __eq__(self, other):
-    #    if isinstance(other, Fluid) and self.name == other.name:
-    #        return(True)
-    #    return(False)
     
-    #def __hash__(self):
-    #    return(hash(self.name))
+
 
 class Valve:
 
     all = []
+    Reynolds_number_to_correction_factor = {}
+    Reynolds_factors = {'Pinch PA': 1.0}
 
     def __init__(self, name):
         self.name = name
-        self.Reynolds_factor = 1
+        self.Reynolds_factor = Valve.Reynolds_factors[self.name]
         self.FL = {}
-        self.Cv = {}
-#VALVE_REYNOLDS_FACTOR = {'Mariposa': 0.7, 'Pinch PA': 1.0}
+        self.Cv = {} #valve.Cv[diameter][opening] = Cv
+        self.Cv_to_opening = {} #valve.Cv_to_opening[diameter][Cv]
 
     def __repr__(self):
         return(self.name)
+    
+    def fill_Cv_to_opening(self):
+        for diameter in self.Cv:
+            self.Cv_to_opening[diameter] = invert_keys_and_values(self.Cv[diameter])
+
+
+
 
 def clean_string(string):
     string = ''.join(char for char in string if char.isalnum()) #Elimina carácteres no alfanuméricos
@@ -56,9 +59,32 @@ def clean_string(string):
     string = string.lower()
     return(string)
 
+def invert_keys_and_values(original):
+    inverted = {}
+    for key in original:
+        value = original[key]
+        inverted[value] = key
+    return(inverted)
+
 def closest_in_list(values_list, number):
     closest = min(values_list, key = lambda value: abs(value - number))
     return(closest)
+
+def items_just_below_and_just_above_in_list(number, values_list):
+    below = max([value for value in values_list if value <= number], default = None)
+    above = min([value for value in values_list if value >= number], default = None)
+    return(below, above)
+
+def linear_approximation(x_between, x1, y1, x2, y2):
+    if x1 is None or x2 is None or y1 is None or y2 is None or x_between is None:
+        return(None)
+    if x_between == x1:
+        return(y1)
+    if x_between == x2:
+        return(y2)
+    slope = (y2 - y1) / (x2 - x1)
+    approximation = slope * (x_between - x1) + y1
+    return(approximation)
 
 def _load_valves():
     openings_percentages = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
@@ -85,14 +111,15 @@ def _load_valves():
                 if header:
                     header = False
                     continue
-                diameter = line[0]
-                Cv_values = map(int, line[1:])
+                diameter = float(line[0])
+                valve.Cv[diameter] = {}
+                Cv_values = map(float, line[1:])
                 for opening, Cv in zip(openings_percentages, Cv_values):
-                    valve.Cv[(diameter, opening)] = Cv
-
-                
+                    valve.Cv[diameter][opening] = Cv
+        
+        valve.fill_Cv_to_opening()         
     
-
+    Valve.Reynolds_number_to_correction_factor
 
     valves = sorted(Valve.all, key = lambda valve: clean_string(valve.name))
     return(valves)
@@ -100,6 +127,25 @@ def _load_valves():
 @lru_cache(maxsize = 1)
 def get_valves():
     return(_load_valves())
+
+def process_fluid_data_from_temperature(fluid, folder_name): #cambiar todo esto para que tome solo el path y el data structure al que se le agrega
+    
+    folders_name_to_fluid_data = {'specific_gravity_vs_temperature': fluid.specific_gravity, 
+                                  'vapor_pressure_vs_temperature': fluid.vapor_pressure, 
+                                  'speed_of_sound_vs_temperature': fluid.speed_of_sound, 
+                                  'viscosity_vs_temperature': fluid.viscosity}
+    temperature_to_data = folders_name_to_fluid_data[folder_name]
+    
+    header = True
+    with open(DATA_PATH / folder_name / (fluid.name + '.csv'), mode ='r', encoding = 'utf-8') as file:
+        csv_values = csv.reader(file)
+        for line in csv_values:
+            if header:
+                header = False
+                continue
+            temperature = float(line[0])
+            data_value = float(line[1])
+            temperature_to_data[temperature] = data_value
 
 def _load_fluids():
 
@@ -114,50 +160,10 @@ def _load_fluids():
         fluid = Fluid(name)
         Fluid.all.append(fluid)
 
-    header = True
-    with open(DATA_PATH / 'specific_gravity_vs_temperature' / (fluid.name + '.csv'), mode ='r', encoding = 'utf-8') as file:
-        csv_values = csv.reader(file)
-        for line in csv_values:
-            if header:
-                header = False
-                continue
-            temperature = float(line[0])
-            specific_gravity = float(line[1])
-            fluid.specific_gravity[temperature] = specific_gravity
-    
-    header = True
-    with open(DATA_PATH / 'vapor_pressure_vs_temperature' / (fluid.name + '.csv'), mode ='r', encoding = 'utf-8') as file:
-        csv_values = csv.reader(file)
-        for line in csv_values:
-            if header:
-                header = False
-                continue
-            temperature = float(line[0])
-            vapor_pressure = float(line[1])
-            fluid.vapor_pressure[temperature] = vapor_pressure
-    
-    header = True
-    with open(DATA_PATH / 'speed_of_sound_vs_temperature' / (fluid.name + '.csv'), mode ='r', encoding = 'utf-8') as file:
-        csv_values = csv.reader(file)
-        for line in csv_values:
-            if header:
-                header = False
-                continue
-            temperature = float(line[0])
-            speed_of_sound = float(line[1])
-            fluid.speed_of_sound[temperature] = speed_of_sound
-    
-    header = True
-    with open(DATA_PATH / 'viscosity_vs_temperature' / (fluid.name + '.csv'), mode ='r', encoding = 'utf-8') as file:
-        csv_values = csv.reader(file)
-        for line in csv_values:
-            if header:
-                header = False
-                continue
-            temperature = float(line[0])
-            viscosity = float(line[1])
-            fluid.viscosity[temperature] = viscosity
-    
+    for fluid in Fluid.all:
+        folder_names = ['specific_gravity_vs_temperature', 'vapor_pressure_vs_temperature', 'speed_of_sound_vs_temperature', 'viscosity_vs_temperature']
+        for folder_name in folder_names:
+            process_fluid_data_from_temperature(fluid, folder_name)
 
     fluids = sorted(Fluid.all, key = lambda fluid: clean_string(fluid.name))
 
@@ -172,9 +178,9 @@ def get_fluids(edit_this_string_to_force_cache_clear_in_streamlit_cloud = 'v1'):
     return(_load_fluids())
 
 
-def calculate_flow_coefficient_Cv(specific_gravity,       #Dimensionless
-                                  flow,                   #GPM, gallons per minute
-                                  pressure_differential): #PSIG
+def calculate_flow_coefficient_Cv(specific_gravity,         #Dimensionless
+                                  flow,                     #GPM, gallons per minute
+                                  pressure_differential):   #PSIG
     if specific_gravity is None or flow is None or pressure_differential is None:
         return(None)
     
@@ -185,20 +191,32 @@ def calculate_Reynolds_number(flow,        #GPM
                               diameter,    #inches
                               viscosity,   #centistokes
                               valve):
+    if flow is None or diameter is None or viscosity is None or valve is None:
+        return(None)
     
-    Reynolds_number = 3160 * flow / (diameter * viscosity) * valve.Reynolds_factor #???????????
+    Reynolds_number = 3160 * flow / (diameter * viscosity) * valve.Reynolds_factor
     return(Reynolds_number)
 
-def calculate_pressure_recovery_factor_FL(in_pressure,  #PSIA
-                                          out_pressure, #PSIA
-                                          vc_pressure): #PSIA
-    
-    FL = sqrt((in_pressure - out_pressure) / (in_pressure - vc_pressure))
-    return(FL)
+def get_Reynolds_correction_factor(Reynolds_number):
+    pass
 
-def calculate_allowable_pressure_differential_without_cavitation(pressure_recovery_factor, #Dimensionless
-                                                                 in_pressure,              #PSIG
-                                                                 vapor_pressure):          #PSIA
+def calculate_opening_percentage_at_Cv(Cv,         #GPM
+                                       diameter,   #inches
+                                       valve):
+    if Cv is None or diameter is None or valve is None:
+        return(None)
+
+    Cv_below, Cv_above = items_just_below_and_just_above_in_list(Cv, valve.Cv[diameter].values())
+    if Cv_below is None or Cv_above is None:
+        return(None)
+    
+    opening_below, opening_above = valve.Cv_to_opening[diameter][Cv_below], valve.Cv_to_opening[diameter][Cv_above]
+    opening_percentage = linear_approximation(Cv, Cv_below, opening_below, Cv_above, opening_above)
+    return(opening_percentage)
+
+def calculate_allowable_pressure_differential_without_cavitation(pressure_recovery_factor,   #Dimensionless #   CONSIDER CRITICAL VALUE 0.94
+                                                                 in_pressure,                #PSIG
+                                                                 vapor_pressure):            #PSIA
     
     allowable_pressure_differential = pressure_recovery_factor**2 * (in_pressure + 14.7 - 0.94 * vapor_pressure)
     return(allowable_pressure_differential)

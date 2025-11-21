@@ -291,6 +291,8 @@ def generate_header_and_dropdowns(valves, fluids):
 
 def generate_all_input_fields():
 
+    generate_input_fields(input_names_to_units = {'Diámetro nominal': ['in']})
+
     generate_input_fields(input_names_to_units = {'Caudal': ['GPM']}, 
                           text_input_boxes_labels = ['mínimo', 'normal', 'máximo'], 
                           columns_spacing = [2, 1, 1])
@@ -310,8 +312,6 @@ def generate_all_input_fields():
                           can_be_disabled = True, 
                           columns_spacing = [2, 1, 1,], 
                           callback = disable_out_pressure)
-    
-    generate_input_fields(input_names_to_units = {'Diámetro nominal': ['in']})
     
     generate_input_fields(input_names_to_units = {'Temperatura': ['℃']})
 
@@ -386,28 +386,6 @@ with input_column:
 valve, fluid, flow, in_pressure, out_pressure, pressure_differential, diameter, temperature = assign_all_input_variables()
 specific_gravity, vapor_pressure, viscosity, speed_of_sound = assign_all_database_variables()
 
-def calculate_specific_gravity(fluid, temperature):  #Kelvin? #La presión es negligible
-    if fluid is None or temperature is None:
-        return(None)
-
-    
-    if fluid.name == 'Agua':
-        specific_gravity = 1.0157 - 6.81e-4 * temperature #Aproximación lineal, <2% error entre 0 y 200 C
-
-    return(specific_gravity)
-
-
-
-
-
-
-
-
-#need backend functions from data
-vapor_pressure = float_cast(st.session_state['Presión de vapor'])
-viscosity = float_cast(st.session_state['Viscosidad'])
-speed_of_sound = float_cast(st.session_state['Velocidad del sonido'])
-
 
 Cv = {}
 for quantity in ['min', 'normal', 'max']:
@@ -415,37 +393,32 @@ for quantity in ['min', 'normal', 'max']:
 
 Cv
 
-
-#---------not final code
-
 Reynolds_number = {}
-for quantity in ['min, normal, max']:
-    #Reynolds_number[quantity] = backend.calculate_reynolds_number(flow[quantity], diameter, )
-    pass
+for quantity in ['min', 'normal', 'max']:
+    Reynolds_number[quantity] = backend.calculate_Reynolds_number(flow[quantity], diameter, viscosity, valve)
+
+Reynolds_number 
+
+opening = {}
+for quantity in ['min', 'normal', 'max']:
+    opening[quantity] = backend.calculate_opening_percentage_at_Cv(Cv[quantity], diameter, valve)
+
+opening
 
 
-def calculate_Reynolds_number(flow,        #GPM
-                              diameter,    #inches
-                              viscosity,   #centistokes
-                              valve):
-    
-    valve_factor = VALVE_REYNOLDS_FACTOR[valve.name]
-    Reynolds_number = 3160 * flow / (diameter * viscosity) * valve_factor #???????????
-    return(Reynolds_number)
+#FL = 
 
-def calculate_pressure_recovery_factor_FL(in_pressure,  #PSIA
-                                          out_pressure, #PSIA
-                                          vc_pressure): #PSIA
-    
-    FL = sqrt((in_pressure - out_pressure) / (in_pressure - vc_pressure))
-    return(FL)
-
-
-
-st.session_state['Diferencia de presión_mínimo']
 
 #--------------
 
+def calculate_allowable_pressure_differential_without_cavitation(pressure_recovery_factor, #Dimensionless
+                                                                 in_pressure,              #PSIG
+                                                                 vapor_pressure):          #PSIA
+    
+    allowable_pressure_differential = pressure_recovery_factor**2 * (in_pressure + 14.7 - 0.94 * vapor_pressure)
+    return(allowable_pressure_differential)
+
+#--------------
 
 if st.session_state['rerun']: #Reruns on any text input to avoid lag
     st.session_state['rerun'] = False
