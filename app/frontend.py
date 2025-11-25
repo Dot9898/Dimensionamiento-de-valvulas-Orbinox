@@ -28,6 +28,13 @@ def substract_handling_type(x, y):
         return(None)
     return(x - y)
 
+def multiply_handling_type(x, y):
+    x = float_cast(x)
+    y = float_cast(y)
+    if x is None or y is None:
+        return(None)
+    return (x * y)
+
 @st.cache_resource
 def load_images():
     images = {}
@@ -69,13 +76,13 @@ def assign_all_input_variables():
     elif st.session_state['Presión de salida_normal_is_disabled']:
         
         pressure_differential = get_min_normal_max_casted_to_float('Diferencia de presión')
-        
-        st.session_state['Presión de salida'] = substract_handling_type(in_pressure['min'], pressure_differential['min'])
-        st.session_state['Presión de salida'] = substract_handling_type(in_pressure['normal'], pressure_differential['normal'])
-        st.session_state['Presión de salida'] = substract_handling_type(in_pressure['max'], pressure_differential['max'])
+
+        st.session_state['Presión de salida_mínimo'] = substract_handling_type(in_pressure['min'], pressure_differential['min'])
+        st.session_state['Presión de salida_normal'] = substract_handling_type(in_pressure['normal'], pressure_differential['normal'])
+        st.session_state['Presión de salida_máximo'] = substract_handling_type(in_pressure['max'], pressure_differential['max'])
         
         out_pressure = get_min_normal_max_casted_to_float('Presión de salida')
-    
+
     else:
         out_pressure = get_min_normal_max_casted_to_float('Presión de salida')
         pressure_differential = get_min_normal_max_casted_to_float('Diferencia de presión')
@@ -297,11 +304,11 @@ def generate_all_input_fields():
                           text_input_boxes_labels = ['mínimo', 'normal', 'máximo'], 
                           columns_spacing = [2, 1, 1])
     
-    generate_input_fields(input_names_to_units = {'Presión de entrada': ['PSIA']}, 
+    generate_input_fields(input_names_to_units = {'Presión de entrada': ['PSIG']}, 
                           text_input_boxes_labels = ['mínimo', 'normal', 'máximo'], 
                           columns_spacing = [2, 1, 1])
     
-    generate_input_fields(input_names_to_units = {'Presión de salida': ['PSIA']}, 
+    generate_input_fields(input_names_to_units = {'Presión de salida': ['PSIG']}, 
                           text_input_boxes_labels = ['mínimo', 'normal', 'máximo'], 
                           columns_spacing = [2, 1, 1], 
                           can_be_disabled = True, 
@@ -330,9 +337,7 @@ def generate_all_input_fields():
 
 #-----------------------------------------------------------------------------------------------------------------------------------------------
 
-
-valves = backend.get_valves()
-fluids = backend.get_fluids()
+valves, fluids = backend.get_data()
 images = load_images()
 
 
@@ -386,39 +391,30 @@ with input_column:
 valve, fluid, flow, in_pressure, out_pressure, pressure_differential, diameter, temperature = assign_all_input_variables()
 specific_gravity, vapor_pressure, viscosity, speed_of_sound = assign_all_database_variables()
 
+Reynolds_number, correction_factor, Cv, opening, FL, allowable_pressure_differential, velocity = {}, {}, {}, {}, {}, {}, {}
 
-Cv = {}
-for quantity in ['min', 'normal', 'max']:
-    Cv[quantity] = backend.calculate_flow_coefficient_Cv(specific_gravity, flow[quantity], pressure_differential[quantity])
-
-Cv
-
-Reynolds_number = {}
 for quantity in ['min', 'normal', 'max']:
     Reynolds_number[quantity] = backend.calculate_Reynolds_number(flow[quantity], diameter, viscosity, valve)
-
-Reynolds_number 
-
-opening = {}
-for quantity in ['min', 'normal', 'max']:
+    correction_factor[quantity] = backend.get_Reynolds_correction_factor(Reynolds_number[quantity])
+    if Reynolds_number[quantity] is not None:
+        if Reynolds_number[quantity] < 0.5:
+            pass #WARNING FLUIDO DEMASIADO VISCOSO EN ESE DIÁMETRO Y CAUDAL
+    Cv[quantity] = multiply_handling_type(correction_factor[quantity], backend.calculate_flow_coefficient_Cv(specific_gravity, flow[quantity], pressure_differential[quantity]))
     opening[quantity] = backend.calculate_opening_percentage_at_Cv(Cv[quantity], diameter, valve)
-
-opening
-
-
-#FL = 
+    FL[quantity] = backend.get_pressure_recovery_factor_FL(opening[quantity], valve)
+    allowable_pressure_differential[quantity] = backend.calculate_allowable_pressure_differential_without_cavitation(FL[quantity], in_pressure[quantity], vapor_pressure, valve)
+    velocity[quantity] = backend.calculate_in_velocity(flow[quantity], diameter)
 
 
-#--------------
+#caudal, apertura, Cv, velocidad, cavitación check
+#Falta ruido y erosión / abrasión para pegar todo. luego preguntar diámetro propuesto, y preguntar detalle gráfico y hacerlo.
+#Falta flashing, erosión / abrasión, ruido estimado, diámetro propuesto(?), gráfico
 
-def calculate_allowable_pressure_differential_without_cavitation(pressure_recovery_factor, #Dimensionless
-                                                                 in_pressure,              #PSIG
-                                                                 vapor_pressure):          #PSIA
-    
-    allowable_pressure_differential = pressure_recovery_factor**2 * (in_pressure + 14.7 - 0.94 * vapor_pressure)
-    return(allowable_pressure_differential)
 
-#--------------
+
+
+
+
 
 if st.session_state['rerun']: #Reruns on any text input to avoid lag
     st.session_state['rerun'] = False

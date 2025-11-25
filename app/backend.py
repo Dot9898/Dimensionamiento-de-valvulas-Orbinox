@@ -33,15 +33,16 @@ class Fluid:
 class Valve:
 
     all = []
-    Reynolds_number_to_correction_factor = {}
     Reynolds_factors = {'Pinch PA': 1.0}
+    critical_pressure_ratios = {'Pinch PA': 0.94}
 
     def __init__(self, name):
         self.name = name
         self.Reynolds_factor = Valve.Reynolds_factors[self.name]
-        self.FL = {}
+        self.critical_pressure_ratio = Valve.critical_pressure_ratios[self.name]
+        self.FL = {} #valve.FL[opening] = FL
         self.Cv = {} #valve.Cv[diameter][opening] = Cv
-        self.Cv_to_opening = {} #valve.Cv_to_opening[diameter][Cv]
+        self.Cv_to_opening = {} #valve.Cv_to_opening[diameter][Cv] = opening
 
     def __repr__(self):
         return(self.name)
@@ -52,6 +53,7 @@ class Valve:
 
 
 
+#Utilities
 
 def clean_string(string):
     string = ''.join(char for char in string if char.isalnum()) #Elimina carácteres no alfanuméricos
@@ -86,29 +88,57 @@ def linear_approximation(x_between, x1, y1, x2, y2):
     approximation = slope * (x_between - x1) + y1
     return(approximation)
 
-def _load_valves():
-    openings_percentages = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
-    
-    header = True
-    with open(DATA_PATH / 'FL_vs_opening.csv', mode ='r', encoding = 'utf-8') as file:
+def get_linear_approximation_from_dict(x_target, dictionnary):
+    x_below, x_above = items_just_below_and_just_above_in_list(x_target, dictionnary.keys())
+    if x_below is None or x_above is None:
+        return(None)
+    y_below, y_above = dictionnary[x_below], dictionnary[x_above]
+    y_target = linear_approximation(x_target, x_below, y_below, x_above, y_above)
+    return(y_target)
+
+def process_two_column_csv_to_dict(csv_path, target_dict, header = True):
+    with open(csv_path, mode ='r', encoding = 'utf-8') as file:
         csv_values = csv.reader(file)
         for line in csv_values:
             if header:
                 header = False
                 continue
-            valve_name = line[0]
-            valve = Valve(valve_name)
-            Valve.all.append(valve)
-            FL_values = map(float, line[1:])
-            for opening, FL in zip(openings_percentages, FL_values):
-                valve.FL[opening] = FL
+            key = float(line[0])
+            value = float(line[1])
+            target_dict[key] = value
+
+
+#Data processing
+
+def _load_valves():
     
+    valve_names = []
+    with open(DATA_PATH / 'valve_names.csv', mode ='r', encoding = 'utf-8') as file:
+        csv_values = csv.reader(file)
+        for line in csv_values:
+            name = line[0]
+            valve_names.append(name)
+    
+    for name in valve_names:
+        valve = Valve(name)
+        Valve.all.append(valve)
+    
+    valve_name_to_Valve = {}
     for valve in Valve.all:
+        valve_name_to_Valve[valve.name] = valve
+
+    for valve in Valve.all:
+
+        FL_path = DATA_PATH / 'FL_vs_opening' / (valve.name + '.csv')
+        target = valve.FL
+        process_two_column_csv_to_dict(FL_path, target)
+
         header = True
         with open(DATA_PATH / 'Cv_vs_opening' / (valve.name + '.csv'), mode ='r', encoding = 'utf-8') as file:
             csv_values = csv.reader(file)
             for line in csv_values:
                 if header:
+                    openings_percentages = list(map(float, line[1:]))
                     header = False
                     continue
                 diameter = float(line[0])
@@ -116,36 +146,10 @@ def _load_valves():
                 Cv_values = map(float, line[1:])
                 for opening, Cv in zip(openings_percentages, Cv_values):
                     valve.Cv[diameter][opening] = Cv
-        
         valve.fill_Cv_to_opening()         
-    
-    Valve.Reynolds_number_to_correction_factor
 
     valves = sorted(Valve.all, key = lambda valve: clean_string(valve.name))
     return(valves)
-
-@lru_cache(maxsize = 1)
-def get_valves():
-    return(_load_valves())
-
-def process_fluid_data_from_temperature(fluid, folder_name): #cambiar todo esto para que tome solo el path y el data structure al que se le agrega
-    
-    folders_name_to_fluid_data = {'specific_gravity_vs_temperature': fluid.specific_gravity, 
-                                  'vapor_pressure_vs_temperature': fluid.vapor_pressure, 
-                                  'speed_of_sound_vs_temperature': fluid.speed_of_sound, 
-                                  'viscosity_vs_temperature': fluid.viscosity}
-    temperature_to_data = folders_name_to_fluid_data[folder_name]
-    
-    header = True
-    with open(DATA_PATH / folder_name / (fluid.name + '.csv'), mode ='r', encoding = 'utf-8') as file:
-        csv_values = csv.reader(file)
-        for line in csv_values:
-            if header:
-                header = False
-                continue
-            temperature = float(line[0])
-            data_value = float(line[1])
-            temperature_to_data[temperature] = data_value
 
 def _load_fluids():
 
@@ -161,9 +165,14 @@ def _load_fluids():
         Fluid.all.append(fluid)
 
     for fluid in Fluid.all:
-        folder_names = ['specific_gravity_vs_temperature', 'vapor_pressure_vs_temperature', 'speed_of_sound_vs_temperature', 'viscosity_vs_temperature']
-        for folder_name in folder_names:
-            process_fluid_data_from_temperature(fluid, folder_name)
+        paths_to_target_dicts = {DATA_PATH / 'specific_gravity_vs_temperature' / (fluid.name + '.csv'): fluid.specific_gravity, 
+                                 DATA_PATH / 'vapor_pressure_vs_temperature' / (fluid.name + '.csv'): fluid.vapor_pressure, 
+                                 DATA_PATH / 'speed_of_sound_vs_temperature' / (fluid.name + '.csv'): fluid.speed_of_sound, 
+                                 DATA_PATH / 'viscosity_vs_temperature' / (fluid.name + '.csv'):  fluid.viscosity}
+        
+        for path in paths_to_target_dicts:
+            target = paths_to_target_dicts[path]
+            process_two_column_csv_to_dict(path, target)
 
     fluids = sorted(Fluid.all, key = lambda fluid: clean_string(fluid.name))
 
@@ -174,16 +183,23 @@ def _load_fluids():
     return(fluids)
 
 @lru_cache(maxsize = 1)
-def get_fluids(edit_this_string_to_force_cache_clear_in_streamlit_cloud = 'v1'):
-    return(_load_fluids())
+def _get_Reynolds_number_to_correction_factor():
+    Reynolds_number_to_correction_factor = {}
+    process_two_column_csv_to_dict(DATA_PATH / 'Reynolds_number_vs_correction_factor.csv', Reynolds_number_to_correction_factor)
+    return(Reynolds_number_to_correction_factor)
 
+@lru_cache(maxsize = 1)
+def get_data(edit_this_string_to_force_cache_clear_in_streamlit_cloud = 'v1'):
+    return(_load_valves(), _load_fluids())
+
+
+#Sizing calculations
 
 def calculate_flow_coefficient_Cv(specific_gravity,         #Dimensionless
                                   flow,                     #GPM, gallons per minute
                                   pressure_differential):   #PSIG
     if specific_gravity is None or flow is None or pressure_differential is None:
         return(None)
-    
     Cv = flow * sqrt(specific_gravity / pressure_differential)
     return(Cv)
 
@@ -193,36 +209,47 @@ def calculate_Reynolds_number(flow,        #GPM
                               valve):
     if flow is None or diameter is None or viscosity is None or valve is None:
         return(None)
-    
-    Reynolds_number = 3160 * flow / (diameter * viscosity) * valve.Reynolds_factor
+    Reynolds_number = 3160 * flow / (diameter * viscosity) * valve.Reynolds_factor #CHEQUEAR FACTOR PARA OTRO TIPO DE VÁLVULAS
     return(Reynolds_number)
 
 def get_Reynolds_correction_factor(Reynolds_number):
-    pass
+    if Reynolds_number is None:
+        return(None)
+    if Reynolds_number > 4999.9:
+        return(1.0)
+    if Reynolds_number < 0.011:
+        return(240.0)
+    Reynolds_to_correction = _get_Reynolds_number_to_correction_factor()
+    correction_factor = get_linear_approximation_from_dict(Reynolds_number, Reynolds_to_correction)
+    return(correction_factor)
+
+def get_pressure_recovery_factor_FL(opening, valve):
+    if opening is None or valve is None:
+        return(None)
+    FL = get_linear_approximation_from_dict(opening, valve.FL)
+    return(FL)
 
 def calculate_opening_percentage_at_Cv(Cv,         #GPM
                                        diameter,   #inches
                                        valve):
     if Cv is None or diameter is None or valve is None:
         return(None)
-
-    Cv_below, Cv_above = items_just_below_and_just_above_in_list(Cv, valve.Cv[diameter].values())
-    if Cv_below is None or Cv_above is None:
-        return(None)
-    
-    opening_below, opening_above = valve.Cv_to_opening[diameter][Cv_below], valve.Cv_to_opening[diameter][Cv_above]
-    opening_percentage = linear_approximation(Cv, Cv_below, opening_below, Cv_above, opening_above)
+    opening_percentage = get_linear_approximation_from_dict(Cv, valve.Cv_to_opening[diameter])
     return(opening_percentage)
 
 def calculate_allowable_pressure_differential_without_cavitation(pressure_recovery_factor,   #Dimensionless #   CONSIDER CRITICAL VALUE 0.94
                                                                  in_pressure,                #PSIG
-                                                                 vapor_pressure):            #PSIA
-    
-    allowable_pressure_differential = pressure_recovery_factor**2 * (in_pressure + 14.7 - 0.94 * vapor_pressure)
+                                                                 vapor_pressure,             #PSIA
+                                                                 valve):
+    if pressure_recovery_factor is None or in_pressure is None or vapor_pressure is None or valve is None:
+        return(None)
+    allowable_pressure_differential = pressure_recovery_factor**2 * (in_pressure + 14.7 - valve.critical_pressure_ratio * vapor_pressure) #CHEQUEAR CRIT PRESSURE RATIO
     return(allowable_pressure_differential)
 
 def calculate_in_velocity(flow, #GPM
                           diameter): #inches
+    if flow is None or diameter is None:
+        return(None)
     ratio = diameter / 2
     area = PI * ratio**2
     velocity = flow / (3.12 * area)
