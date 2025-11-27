@@ -33,7 +33,14 @@ def multiply_handling_type(x, y):
     y = float_cast(y)
     if x is None or y is None:
         return(None)
-    return (x * y)
+    return(x * y)
+
+def gt_handling_type(x, y):
+    x = float_cast(x)
+    y = float_cast(y)
+    if x is None or y is None:
+        return(None)
+    return(x > y)
 
 @st.cache_resource
 def load_images():
@@ -122,6 +129,7 @@ def assign_all_database_variables():
     viscosity = assign_database_variable(fluid, temperature, 'Viscosidad')
     speed_of_sound = assign_database_variable(fluid, temperature, 'Velocidad del sonido')
     return(specific_gravity, vapor_pressure, viscosity, speed_of_sound)
+
 
 #Callbacks
 
@@ -239,6 +247,47 @@ def generate_input_fields(input_names_to_units,
             elif len(units) == 1:
                 st.write(units[0])
 
+def generate_output_field(name, 
+                          values, 
+                          units,
+                          output_boxes_labels = [''], 
+                          columns_spacing = [2, 3, 1]):
+    number_of_outputs = len(output_boxes_labels)
+    columns_spacing[1] = columns_spacing[1]*number_of_outputs
+    
+    name_column, output_column, units_column = st.columns(columns_spacing)
+        
+    with name_column:
+        st.write(name)
+
+    with output_column:
+        output_subcolumns = st.columns([1]*number_of_outputs)
+        for index in range(len(output_subcolumns)):
+            with output_subcolumns[index]:
+                label = output_boxes_labels[index]
+                value = values[index]
+                if value == None:
+                    value = label
+                elif float_cast(value) is not None:
+                    value = round(value, 1)
+                    
+                st.text_input(label, 
+                              value = value, 
+                              label_visibility = 'collapsed', 
+                              placeholder = label, 
+                              disabled = True, 
+                              key = name + '_' + label + str(value))
+
+    with units_column:
+        if len(units) >= 2:
+            st.selectbox(label, 
+                         units, 
+                         label_visibility = 'collapsed', 
+                         accept_new_options = False, 
+                         placeholder = 'unidad')
+        elif len(units) == 1:
+            st.write(units[0])
+
 def generate_title_and_logo(images):
     title_column, logo_column = st.columns([3, 1])
 
@@ -271,7 +320,7 @@ def generate_title_and_logo(images):
     
 def generate_header_and_dropdowns(valves, fluids):
     st.subheader('Condiciones de trabajo')
-    valve_selection_column, fluid_selection_column = st.columns([1, 2])
+    valve_selection_column, fluid_selection_column, empty_column = st.columns([2, 3, 1])
 
     with valve_selection_column:
         st.selectbox('Tipo de válvula', 
@@ -298,8 +347,6 @@ def generate_header_and_dropdowns(valves, fluids):
 
 def generate_all_input_fields():
 
-    generate_input_fields(input_names_to_units = {'Diámetro nominal': ['in']})
-
     generate_input_fields(input_names_to_units = {'Caudal': ['GPM']}, 
                           text_input_boxes_labels = ['mínimo', 'normal', 'máximo'], 
                           columns_spacing = [2, 1, 1])
@@ -319,6 +366,8 @@ def generate_all_input_fields():
                           can_be_disabled = True, 
                           columns_spacing = [2, 1, 1,], 
                           callback = disable_out_pressure)
+    
+    generate_input_fields(input_names_to_units = {'Diámetro nominal': ['in']})
     
     generate_input_fields(input_names_to_units = {'Temperatura': ['℃']})
 
@@ -387,30 +436,79 @@ with input_column:
     generate_header_and_dropdowns(valves, fluids)
     generate_all_input_fields()
 
-
 valve, fluid, flow, in_pressure, out_pressure, pressure_differential, diameter, temperature = assign_all_input_variables()
 specific_gravity, vapor_pressure, viscosity, speed_of_sound = assign_all_database_variables()
 
-Reynolds_number, correction_factor, Cv, opening, FL, allowable_pressure_differential, velocity = {}, {}, {}, {}, {}, {}, {}
+Reynolds_number, correction_factor, Cv, opening, FL, allowable_pressure_differential, velocity, is_cavitating, is_eroding = {}, {}, {}, {}, {}, {}, {}, {}, {}
 
 for quantity in ['min', 'normal', 'max']:
     Reynolds_number[quantity] = backend.calculate_Reynolds_number(flow[quantity], diameter, viscosity, valve)
     correction_factor[quantity] = backend.get_Reynolds_correction_factor(Reynolds_number[quantity])
     if Reynolds_number[quantity] is not None:
-        if Reynolds_number[quantity] < 0.5:
-            pass #WARNING FLUIDO DEMASIADO VISCOSO EN ESE DIÁMETRO Y CAUDAL
+        if Reynolds_number[quantity] < 1:
+            pass #WARNING FLUIDO DEMASIADO VISCOSO EN ESE DIÁMETRO Y CAUDAL #incluir para 10, 1, y 0.1
     Cv[quantity] = multiply_handling_type(correction_factor[quantity], backend.calculate_flow_coefficient_Cv(specific_gravity, flow[quantity], pressure_differential[quantity]))
     opening[quantity] = backend.calculate_opening_percentage_at_Cv(Cv[quantity], diameter, valve)
     FL[quantity] = backend.get_pressure_recovery_factor_FL(opening[quantity], valve)
     allowable_pressure_differential[quantity] = backend.calculate_allowable_pressure_differential_without_cavitation(FL[quantity], in_pressure[quantity], vapor_pressure, valve)
     velocity[quantity] = backend.calculate_in_velocity(flow[quantity], diameter)
-
+    is_cavitating[quantity] = gt_handling_type(pressure_differential[quantity], allowable_pressure_differential[quantity])
+    if valve is not None:
+        is_eroding[quantity] = gt_handling_type(velocity[quantity], valve.max_velocity_without_erosion)
+max_velocity = max([velocity for velocity in velocity.values() if velocity is not None], default = None)
+cavitation_message = 'Sí cavita' if True in is_cavitating.values() else 'No cavita'
+erosion_message = 'Sí erosión' if True in is_eroding.values() else 'No erosión'
 
 #caudal, apertura, Cv, velocidad, cavitación check
 #Falta ruido y erosión / abrasión para pegar todo. luego preguntar diámetro propuesto, y preguntar detalle gráfico y hacerlo.
 #Falta flashing, erosión / abrasión, ruido estimado, diámetro propuesto(?), gráfico
 
 
+with output_column:
+    st.subheader('‎')
+    st.subheader('‎')
+    
+    generate_output_field('Caudal', 
+                          [flow['min'], flow['normal'], flow['max']], 
+                          ['GPM'], 
+                          output_boxes_labels = ['mínimo', 'normal', 'máximo'], 
+                          columns_spacing = [2, 1, 1])
+    
+    generate_output_field('Apertura', 
+                          [opening['min'], opening['normal'], opening['max']], 
+                          ['%'], 
+                          output_boxes_labels = ['mínimo', 'normal', 'máximo'], 
+                          columns_spacing = [2, 1, 1])
+    
+    generate_output_field('Cv', 
+                          [Cv['min'], Cv['normal'], Cv['max']], 
+                          ['GPM'], 
+                          output_boxes_labels = ['mínimo', 'normal', 'máximo'], 
+                          columns_spacing = [2, 1, 1])
+    
+    generate_output_field('Diferencia de presión permitida', 
+                          [allowable_pressure_differential['min'], allowable_pressure_differential['normal'], allowable_pressure_differential['max']], 
+                          ['PSI'], 
+                          output_boxes_labels = ['mínimo', 'normal', 'máximo'], 
+                          columns_spacing = [2, 1, 1])
+
+    generate_output_field('Velocidad máxima', 
+                          [max_velocity], 
+                          ['ft/s'], 
+                          output_boxes_labels = [''], 
+                          columns_spacing = [2, 3, 1])
+    
+    generate_output_field('Ruido estimado', 
+                          [None], 
+                          ['dB'], 
+                          output_boxes_labels = [''], 
+                          columns_spacing = [2, 3, 1])
+    
+    generate_output_field('Estabilidad de la válvula', 
+                          [cavitation_message, None, erosion_message], 
+                          [''], 
+                          output_boxes_labels = ['Cavitación', 'Flashing', 'Erosión'], 
+                          columns_spacing = [2, 1, 1])
 
 
 

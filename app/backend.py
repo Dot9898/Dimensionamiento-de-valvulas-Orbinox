@@ -7,6 +7,7 @@ from unidecode import unidecode
 from functools import lru_cache
 from math import sqrt
 from math import pi
+from math import log10
 
 
 PI = pi
@@ -35,11 +36,13 @@ class Valve:
     all = []
     Reynolds_factors = {'Pinch PA': 1.0}
     critical_pressure_ratios = {'Pinch PA': 0.94}
+    max_velocities_without_erosion = {'Pinch PA': 22.0}
 
     def __init__(self, name):
         self.name = name
         self.Reynolds_factor = Valve.Reynolds_factors[self.name]
         self.critical_pressure_ratio = Valve.critical_pressure_ratios[self.name]
+        self.max_velocity_without_erosion = Valve.max_velocities_without_erosion[self.name]
         self.FL = {} #valve.FL[opening] = FL
         self.Cv = {} #valve.Cv[diameter][opening] = Cv
         self.Cv_to_opening = {} #valve.Cv_to_opening[diameter][Cv] = opening
@@ -72,9 +75,9 @@ def closest_in_list(values_list, number):
     closest = min(values_list, key = lambda value: abs(value - number))
     return(closest)
 
-def items_just_below_and_just_above_in_list(number, values_list):
-    below = max([value for value in values_list if value <= number], default = None)
-    above = min([value for value in values_list if value >= number], default = None)
+def items_just_below_and_just_above_in_list(number, values_list, default_below = None, default_above = None):
+    below = max([value for value in values_list if value <= number], default = default_below)
+    above = min([value for value in values_list if value >= number], default = default_above)
     return(below, above)
 
 def linear_approximation(x_between, x1, y1, x2, y2):
@@ -89,7 +92,7 @@ def linear_approximation(x_between, x1, y1, x2, y2):
     return(approximation)
 
 def get_linear_approximation_from_dict(x_target, dictionnary):
-    x_below, x_above = items_just_below_and_just_above_in_list(x_target, dictionnary.keys())
+    x_below, x_above = items_just_below_and_just_above_in_list(x_target, dictionnary.keys()) #CHEQUEAR EDGE CASES CADA VEZ Q SE USA
     if x_below is None or x_above is None:
         return(None)
     y_below, y_above = dictionnary[x_below], dictionnary[x_above]
@@ -189,6 +192,18 @@ def _get_Reynolds_number_to_correction_factor():
     return(Reynolds_number_to_correction_factor)
 
 @lru_cache(maxsize = 1)
+def _get_noise_factor_A_data():
+    noise_factor_A = {}
+
+    return(noise_factor_A)
+
+@lru_cache(maxsize = 1)
+def _get_noise_factor_C_data():
+    noise_factor_C_not_cavitating = {}
+    noise_factor_C_cavitating = {}
+    return(noise_factor_C_not_cavitating, noise_factor_C_cavitating)
+
+@lru_cache(maxsize = 1)
 def get_data(edit_this_string_to_force_cache_clear_in_streamlit_cloud = 'v1'):
     return(_load_valves(), _load_fluids())
 
@@ -223,7 +238,8 @@ def get_Reynolds_correction_factor(Reynolds_number):
     correction_factor = get_linear_approximation_from_dict(Reynolds_number, Reynolds_to_correction)
     return(correction_factor)
 
-def get_pressure_recovery_factor_FL(opening, valve):
+def get_pressure_recovery_factor_FL(opening,   #%
+                                    valve):
     if opening is None or valve is None:
         return(None)
     FL = get_linear_approximation_from_dict(opening, valve.FL)
@@ -255,8 +271,57 @@ def calculate_in_velocity(flow, #GPM
     velocity = flow / (3.12 * area)
     return(velocity)
 
+def get_noise_factor_A(Cv,         #GPM
+                       diameter):   #in
+    if Cv is None or diameter is None:
+        return(None)
+    curve_number = Cv / diameter**2
+    available_data = [1.0, 2.0, 3.0, 5.0, 7.0, 10.0, 15.0]
+    below_curve_number, above_curve_number = items_just_below_and_just_above_in_list(curve_number, available_data, default_below = 1.0)
+    noise_factor_A_data = _get_noise_factor_A_data()
+    below_curve = noise_factor_A_data[below_curve_number] #diameter to Db
+    above_curve = noise_factor_A_data[above_curve_number]
+    below_Db = get_linear_approximation_from_dict(diameter, below_curve)
+    above_Db = get_linear_approximation_from_dict(diameter, above_curve)
+    noise_factor_A = linear_approximation(curve_number, below_curve_number, below_Db, above_curve_number, above_Db)
+    return(noise_factor_A)
+
+def get_noise_factor_B(in_pressure):
+    if in_pressure is None:
+        return(None)
+    if in_pressure <= 10:
+        return(0)
+    noise_factor_B = 35 * log10(in_pressure) - 35
+    return(noise_factor_B)
+
+def get_noise_factor_C(in_pressure, out_pressure, vapor_pressure, is_cavitating):
+    if in_pressure is None or out_pressure is None or vapor_pressure is None or is_cavitating is None:
+        return(None)
+    X_10 = 10 * (in_pressure - out_pressure) / (in_pressure - vapor_pressure)
+    if X_10 < 1:
+        return(0)
+    noise_factor_C_data_not_cavitating, noise_factor_C_data_cavitating = _get_noise_factor_C_data()
+    if not is_cavitating:
+        noise_factor_C = noise_factor_C_data_not_cavitating[X_10]
+    else:
+        if False:
+            curve_number = Cv / diameter**2
+            available_data = [1.0, 2.0, 3.0, 5.0, 7.0, 10.0, 15.0]
+            below_curve_number, above_curve_number = items_just_below_and_just_above_in_list(curve_number, available_data, default_below = 1.0)
+            noise_factor_A_data = _get_noise_factor_A_data()
+            below_curve = noise_factor_A_data[below_curve_number] #diameter to Db
+            above_curve = noise_factor_A_data[above_curve_number]
+            below_Db = get_linear_approximation_from_dict(diameter, below_curve)
+            above_Db = get_linear_approximation_from_dict(diameter, above_curve)
+            noise_factor_A = linear_approximation(curve_number, below_curve_number, below_Db, above_curve_number, above_Db)
+        
+    
+    
+
 def calculate_noise(): #https://www.isa.org/intech-home/2018/july-august/departments/control-valve-noise-estimating-made-easy
-    pass #pendiente
+    
+    
+    pass
 
 
 

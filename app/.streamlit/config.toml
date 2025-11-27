@@ -1,0 +1,44 @@
+
+[client]
+showErrorDetails = 'full'
+
+[theme]
+base = 'light'
+
+primaryColor = '#1F84B5'
+backgroundColor = 'aliceblue' #'#F2F2F2'
+secondaryBackgroundColor = '#66c6f3fa'
+#'#0090D3'
+#'#1F84B5'
+
+baseFontSize = 16
+baseFontWeight = 500
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

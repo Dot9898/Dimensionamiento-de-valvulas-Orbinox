@@ -31,3 +31,42 @@ for label, inputs, unit in fields:
 
 
 
+def generate_output_field(name, 
+                          values, 
+                          units,
+                          output_boxes_labels = [''], 
+                          columns_spacing = [2, 3, 1]):
+    number_of_outputs = len(output_boxes_labels)
+    columns_spacing[1] = columns_spacing[1]*number_of_outputs
+    
+    name_column, output_column, units_column = st.columns(columns_spacing)
+        
+    with name_column:
+        st.write(name)
+
+    with output_column:
+        output_subcolumns = st.columns([1]*number_of_outputs)
+        for index in range(len(output_subcolumns)):
+            with output_subcolumns[index]:
+                label = output_boxes_labels[index]
+                value = values[index]
+                if value == None:
+                    value = label
+                    
+                st.text_input(label, 
+                              value = value, 
+                              label_visibility = 'collapsed', 
+                              placeholder = label, 
+                              disabled = True)
+
+    with units_column:
+        if len(units) >= 2:
+            st.selectbox(label, 
+                         units, 
+                         label_visibility = 'collapsed', 
+                         accept_new_options = False, 
+                         placeholder = 'unidad')
+        elif len(units) == 1:
+            st.write(units[0])
+
+
