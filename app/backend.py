@@ -204,7 +204,7 @@ def _get_noise_factor_C_data():
     return(noise_factor_C_not_cavitating, noise_factor_C_cavitating)
 
 @lru_cache(maxsize = 1)
-def get_data(edit_this_string_to_force_cache_clear_in_streamlit_cloud = 'v1'):
+def get_data(edit_this_string_to_force_cache_clear_in_streamlit_cloud = 'v2'):
     return(_load_valves(), _load_fluids())
 
 
