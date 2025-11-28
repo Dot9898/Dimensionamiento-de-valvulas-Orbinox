@@ -271,20 +271,21 @@ def generate_output_field(name,
                 elif float_cast(value) is not None:
                     value = round(value, 1)
                     
-                st.text_input(label, 
+                st.text_input(name + '_' + label + str(value), 
                               value = value, 
                               label_visibility = 'collapsed', 
                               placeholder = label, 
                               disabled = True, 
-                              key = name + '_' + label + str(value))
+                              key = name + '_' + label + '_' + str(value))
 
     with units_column:
         if len(units) >= 2:
-            st.selectbox(label, 
+            st.selectbox(name + '_' + label + '_unit', 
                          units, 
                          label_visibility = 'collapsed', 
                          accept_new_options = False, 
-                         placeholder = 'unidad')
+                         placeholder = 'unidad', 
+                         key = name + '_' + label + '_unit')
         elif len(units) == 1:
             st.write(units[0])
 
@@ -449,6 +450,11 @@ for quantity in ['min', 'normal', 'max']:
             pass #WARNING FLUIDO DEMASIADO VISCOSO EN ESE DIÁMETRO Y CAUDAL #incluir para 10, 1, y 0.1
     Cv[quantity] = multiply_handling_type(correction_factor[quantity], backend.calculate_flow_coefficient_Cv(specific_gravity, flow[quantity], pressure_differential[quantity]))
     opening[quantity] = backend.calculate_opening_percentage_at_Cv(Cv[quantity], diameter, valve)
+    if opening[quantity] is not None:
+        if opening[quantity] < 10:
+            pass #WARNING APERTURA MUY PEQUEÑA
+        if opening[quantity] > 100:
+            pass #WARNING APERTURA MÁXIMA INSUFICIENTE, CAMBIAR CAUDAL Y CV A APERTURA MÁXIMA
     FL[quantity] = backend.get_pressure_recovery_factor_FL(opening[quantity], valve)
     allowable_pressure_differential[quantity] = backend.calculate_allowable_pressure_differential_without_cavitation(FL[quantity], in_pressure[quantity], vapor_pressure, valve)
     velocity[quantity] = backend.calculate_in_velocity(flow[quantity], diameter)
@@ -495,13 +501,11 @@ with output_column:
     generate_output_field('Velocidad máxima', 
                           [max_velocity], 
                           ['ft/s'], 
-                          output_boxes_labels = [''], 
                           columns_spacing = [2, 3, 1])
     
     generate_output_field('Ruido estimado', 
                           [None], 
                           ['dB'], 
-                          output_boxes_labels = [''], 
                           columns_spacing = [2, 3, 1])
     
     generate_output_field('Estabilidad de la válvula', 

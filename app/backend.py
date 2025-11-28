@@ -9,6 +9,7 @@ from math import sqrt
 from math import pi
 from math import log10
 
+import streamlit as st
 
 PI = pi
 ROOT_PATH = Path(__file__).resolve().parent.parent
@@ -91,11 +92,30 @@ def linear_approximation(x_between, x1, y1, x2, y2):
     approximation = slope * (x_between - x1) + y1
     return(approximation)
 
-def get_linear_approximation_from_dict(x_target, dictionnary):
-    x_below, x_above = items_just_below_and_just_above_in_list(x_target, dictionnary.keys()) #CHEQUEAR EDGE CASES CADA VEZ Q SE USA
+def get_linear_approximation_from_dict(x_target, 
+                                       dictionnary, 
+                                       default_x_below = None, 
+                                       default_y_below = None, 
+                                       default_x_above = None, 
+                                       default_y_above = None):
+
+    x_below, x_above = items_just_below_and_just_above_in_list(x_target, 
+                                                               list(dictionnary.keys()), 
+                                                               default_below = default_x_below, 
+                                                               default_above = default_x_above) #CHEQUEAR EDGE CASES CADA VEZ Q SE USA
+
     if x_below is None or x_above is None:
         return(None)
-    y_below, y_above = dictionnary[x_below], dictionnary[x_above]
+    
+    if x_below in dictionnary:
+        y_below = dictionnary[x_below]
+    else:
+        y_below = default_y_below
+    if x_above in dictionnary:
+        y_above = dictionnary[x_above]
+    else:
+        y_above = default_y_above
+
     y_target = linear_approximation(x_target, x_below, y_below, x_above, y_above)
     return(y_target)
 
@@ -238,20 +258,22 @@ def get_Reynolds_correction_factor(Reynolds_number):
     correction_factor = get_linear_approximation_from_dict(Reynolds_number, Reynolds_to_correction)
     return(correction_factor)
 
-def get_pressure_recovery_factor_FL(opening,   #%
-                                    valve):
-    if opening is None or valve is None:
-        return(None)
-    FL = get_linear_approximation_from_dict(opening, valve.FL)
-    return(FL)
-
 def calculate_opening_percentage_at_Cv(Cv,         #GPM
                                        diameter,   #inches
                                        valve):
     if Cv is None or diameter is None or valve is None:
         return(None)
-    opening_percentage = get_linear_approximation_from_dict(Cv, valve.Cv_to_opening[diameter])
+    if Cv > valve.Cv[diameter][100.0]: #CAMBIAR A VALVE MAX OPENING PORQUE FALLA SI EL MAX NO ES 100
+        return(99999.0)
+    opening_percentage = get_linear_approximation_from_dict(Cv, valve.Cv_to_opening[diameter], default_x_below = 0, default_y_below = 0)
     return(opening_percentage)
+
+def get_pressure_recovery_factor_FL(opening,   #% or angle
+                                    valve):
+    if opening is None or valve is None:
+        return(None)
+    FL = get_linear_approximation_from_dict(opening, valve.FL, default_x_below = 0, default_y_below = 0) #CHEQUEAR ESTO, APROX LINEAL PUEDE NO SER SUFICIENTE
+    return(FL)
 
 def calculate_allowable_pressure_differential_without_cavitation(pressure_recovery_factor,   #Dimensionless #   CONSIDER CRITICAL VALUE 0.94
                                                                  in_pressure,                #PSIG
