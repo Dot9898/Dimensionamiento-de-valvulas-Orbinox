@@ -272,8 +272,9 @@ def calculate_opening_percentage_at_Cv(Cv,         #GPM
                                        valve):
     if Cv is None or diameter is None or valve is None:
         return(None)
-    if Cv > valve.Cv[diameter][100.0]: #CAMBIAR A VALVE MAX OPENING PORQUE FALLA SI EL MAX NO ES 100
-        return(99999.0)
+    max_opening = max(valve.Cv[diameter].keys())
+    if Cv > valve.Cv[diameter][max_opening]:
+        return(999.0)
     opening_percentage = get_linear_approximation_from_dict(Cv, valve.Cv_to_opening[diameter], default_x_below = 0, default_y_below = 0)
     return(opening_percentage)
 

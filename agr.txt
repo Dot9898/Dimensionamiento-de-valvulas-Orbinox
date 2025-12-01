@@ -1,1 +1,0 @@
-agregar alguna forma de que la unidad sea un factor que se aplica al momento de asignar el st session state

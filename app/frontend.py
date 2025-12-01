@@ -133,6 +133,9 @@ def assign_all_database_variables():
 
 def calculate_and_assign_all_output_variables(valve, flow, in_pressure, pressure_differential, diameter, specific_gravity, vapor_pressure, viscosity, speed_of_sound):
     Reynolds_number, correction_factor, Cv, opening, FL, allowable_pressure_differential, velocity, is_cavitating, is_eroding = {}, {}, {}, {}, {}, {}, {}, {}, {}
+    if valve is not None and diameter is not None:
+        max_opening = max(valve.Cv[diameter].keys())
+    is_opening_more_than_max_opening = {'min': False, 'normal': False, 'max': False}
     for quantity in ['min', 'normal', 'max']:
         Reynolds_number[quantity] = backend.calculate_Reynolds_number(flow[quantity], diameter, viscosity, valve)
         correction_factor[quantity] = backend.get_Reynolds_correction_factor(Reynolds_number[quantity])
@@ -141,10 +144,10 @@ def calculate_and_assign_all_output_variables(valve, flow, in_pressure, pressure
                 pass #WARNING FLUIDO DEMASIADO VISCOSO EN ESE DIÁMETRO Y CAUDAL #incluir para 10, 1, y 0.1
         Cv[quantity] = multiply_handling_type(correction_factor[quantity], backend.calculate_flow_coefficient_Cv(specific_gravity, flow[quantity], pressure_differential[quantity]))
         opening[quantity] = backend.calculate_opening_percentage_at_Cv(Cv[quantity], diameter, valve)
-        if opening[quantity] is not None:
-            if opening[quantity] < 10:
+        if opening[quantity] is not None and valve is not None and diameter is not None:
+            if opening[quantity] < 10: #MIN OPENING
                 pass #WARNING APERTURA MUY PEQUEÑA
-            if opening[quantity] > 100:
+            if opening[quantity] > max_opening:
                 pass #WARNING APERTURA MÁXIMA INSUFICIENTE, CAMBIAR CAUDAL Y CV A APERTURA MÁXIMA
         FL[quantity] = backend.get_pressure_recovery_factor_FL(opening[quantity], valve)
         allowable_pressure_differential[quantity] = backend.calculate_allowable_pressure_differential_without_cavitation(FL[quantity], in_pressure[quantity], vapor_pressure, valve)
@@ -152,10 +155,12 @@ def calculate_and_assign_all_output_variables(valve, flow, in_pressure, pressure
         is_cavitating[quantity] = gt_handling_type(pressure_differential[quantity], allowable_pressure_differential[quantity])
         if valve is not None:
             is_eroding[quantity] = gt_handling_type(velocity[quantity], valve.max_velocity_without_erosion)
+    #if True in is_opening_more_than_max_opening.values():
+
     max_velocity = max([velocity for velocity in velocity.values() if velocity is not None], default = None)
     cavitation_message = 'Sí cavita' if True in is_cavitating.values() else 'No cavita'
     erosion_message = 'Hay erosión' if True in is_eroding.values() else 'No hay erosión'
-    return(Reynolds_number, correction_factor, Cv, opening, FL, allowable_pressure_differential, velocity, is_cavitating, is_eroding, max_velocity, cavitation_message, erosion_message)
+    return(Reynolds_number, correction_factor, Cv, opening, is_opening_more_than_max_opening, FL, allowable_pressure_differential, velocity, is_cavitating, is_eroding, max_velocity, cavitation_message, erosion_message)
 
 
 
@@ -471,8 +476,16 @@ def generate_all_output_fields(flow, opening, Cv, allowable_pressure_differentia
                           output_boxes_labels = ['mínimo', 'normal', 'máximo'], 
                           columns_spacing = [2, 1, 1])
     
+    shown_opening = opening.copy()
+    shown_allowable_pressure_differential = allowable_pressure_differential.copy()
+    for key in shown_opening:
+        if float_cast(shown_opening[key]) is not None:
+            if shown_opening[key] > 500:
+                shown_opening[key] = '>100'
+                shown_allowable_pressure_differential[key] = ' '
+    
     generate_output_field('Apertura', 
-                          [opening['min'], opening['normal'], opening['max']], 
+                          [shown_opening['min'], shown_opening['normal'], shown_opening['max']], 
                           ['%'], 
                           output_boxes_labels = ['mínimo', 'normal', 'máximo'], 
                           columns_spacing = [2, 1, 1])
@@ -484,7 +497,7 @@ def generate_all_output_fields(flow, opening, Cv, allowable_pressure_differentia
                           columns_spacing = [2, 1, 1])
     
     generate_output_field('Diferencia de presión permitida', 
-                          [allowable_pressure_differential['min'], allowable_pressure_differential['normal'], allowable_pressure_differential['max']], 
+                          [shown_allowable_pressure_differential['min'], shown_allowable_pressure_differential['normal'], shown_allowable_pressure_differential['max']], 
                           ['PSI'], 
                           output_boxes_labels = ['mínimo', 'normal', 'máximo'], 
                           columns_spacing = [2, 1, 1])
@@ -592,7 +605,7 @@ with input_column:
 valve, fluid, flow, in_pressure, out_pressure, pressure_differential, diameter, temperature = assign_all_input_variables()
 specific_gravity, vapor_pressure, viscosity, speed_of_sound = assign_all_database_variables()
 
-(Reynolds_number, correction_factor, Cv, opening, FL, allowable_pressure_differential, 
+(Reynolds_number, correction_factor, Cv, opening, is_opening_more_than_max_opening, FL, allowable_pressure_differential, 
  velocity, is_cavitating, is_eroding, max_velocity, cavitation_message, erosion_message
 ) = calculate_and_assign_all_output_variables(valve, flow, in_pressure, pressure_differential, 
                                               diameter, specific_gravity, vapor_pressure, viscosity, speed_of_sound)
