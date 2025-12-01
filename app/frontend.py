@@ -505,6 +505,9 @@ def generate_all_output_fields(flow, opening, Cv, allowable_pressure_differentia
 
 def plot_opening_vs_flow(valve, diameter, pressure_differential, extra_openings, extra_flows):
 
+    if valve is None or diameter is None or pressure_differential is None:
+        return
+
     all_openings = list(valve.Cv[diameter].keys())
     min_opening, max_opening = min(all_openings), max(all_openings)
 
