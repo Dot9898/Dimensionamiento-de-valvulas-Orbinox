@@ -221,6 +221,7 @@ def _get_noise_factor_A_data():
 def _get_noise_factor_C_data():
     noise_factor_C_not_cavitating = {}
     noise_factor_C_cavitating = {}
+
     return(noise_factor_C_not_cavitating, noise_factor_C_cavitating)
 
 @lru_cache(maxsize = 1)
@@ -237,6 +238,14 @@ def calculate_flow_coefficient_Cv(specific_gravity,         #Dimensionless
         return(None)
     Cv = flow * sqrt(specific_gravity / pressure_differential)
     return(Cv)
+
+def calculate_flow_from_Cv(Cv, 
+                           specific_gravity, 
+                           pressure_differential):
+    if Cv is None or specific_gravity is None or pressure_differential is None:
+        return(None)
+    flow = Cv * sqrt(pressure_differential / specific_gravity)
+    return(flow)
 
 def calculate_Reynolds_number(flow,        #GPM
                               diameter,    #inches

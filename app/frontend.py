@@ -5,6 +5,7 @@ from pathlib import Path
 from PIL import Image
 import base64
 from io import BytesIO
+import plotly.graph_objects as go
 import streamlit as st
 import backend
 
@@ -130,6 +131,33 @@ def assign_all_database_variables():
     speed_of_sound = assign_database_variable(fluid, temperature, 'Velocidad del sonido')
     return(specific_gravity, vapor_pressure, viscosity, speed_of_sound)
 
+def calculate_and_assign_all_output_variables(valve, flow, in_pressure, pressure_differential, diameter, specific_gravity, vapor_pressure, viscosity, speed_of_sound):
+    Reynolds_number, correction_factor, Cv, opening, FL, allowable_pressure_differential, velocity, is_cavitating, is_eroding = {}, {}, {}, {}, {}, {}, {}, {}, {}
+    for quantity in ['min', 'normal', 'max']:
+        Reynolds_number[quantity] = backend.calculate_Reynolds_number(flow[quantity], diameter, viscosity, valve)
+        correction_factor[quantity] = backend.get_Reynolds_correction_factor(Reynolds_number[quantity])
+        if Reynolds_number[quantity] is not None:
+            if Reynolds_number[quantity] < 1:
+                pass #WARNING FLUIDO DEMASIADO VISCOSO EN ESE DIÁMETRO Y CAUDAL #incluir para 10, 1, y 0.1
+        Cv[quantity] = multiply_handling_type(correction_factor[quantity], backend.calculate_flow_coefficient_Cv(specific_gravity, flow[quantity], pressure_differential[quantity]))
+        opening[quantity] = backend.calculate_opening_percentage_at_Cv(Cv[quantity], diameter, valve)
+        if opening[quantity] is not None:
+            if opening[quantity] < 10:
+                pass #WARNING APERTURA MUY PEQUEÑA
+            if opening[quantity] > 100:
+                pass #WARNING APERTURA MÁXIMA INSUFICIENTE, CAMBIAR CAUDAL Y CV A APERTURA MÁXIMA
+        FL[quantity] = backend.get_pressure_recovery_factor_FL(opening[quantity], valve)
+        allowable_pressure_differential[quantity] = backend.calculate_allowable_pressure_differential_without_cavitation(FL[quantity], in_pressure[quantity], vapor_pressure, valve)
+        velocity[quantity] = backend.calculate_in_velocity(flow[quantity], diameter)
+        is_cavitating[quantity] = gt_handling_type(pressure_differential[quantity], allowable_pressure_differential[quantity])
+        if valve is not None:
+            is_eroding[quantity] = gt_handling_type(velocity[quantity], valve.max_velocity_without_erosion)
+    max_velocity = max([velocity for velocity in velocity.values() if velocity is not None], default = None)
+    cavitation_message = 'Sí cavita' if True in is_cavitating.values() else 'No cavita'
+    erosion_message = 'Hay erosión' if True in is_eroding.values() else 'No hay erosión'
+    return(Reynolds_number, correction_factor, Cv, opening, FL, allowable_pressure_differential, velocity, is_cavitating, is_eroding, max_velocity, cavitation_message, erosion_message)
+
+
 
 #Callbacks
 
@@ -195,9 +223,9 @@ def vertical_divider(height):
 
 def generate_input_fields(input_names_to_units, 
                           text_input_boxes_labels = [''], 
-                          columns_spacing = [2, 3, 1], 
+                          columns_spacing = [2, 3, 1], #[largo de los nombres, largo de cada text input, largo de las unidades]
                           can_be_disabled = False, 
-                          callback = do_nothing): #columns_spacing es [largo de los nombres, largo de cada text input, largo de las unidades]
+                          callback = do_nothing):
     number_of_text_inputs = len(text_input_boxes_labels)
     columns_spacing[1] = columns_spacing[1]*number_of_text_inputs
     
@@ -223,8 +251,8 @@ def generate_input_fields(input_names_to_units,
                         disabled_state = st.session_state[key + '_is_disabled']
 
                     if float_cast(st.session_state[key]) is not None:
-                        label = st.session_state[key]
-                        
+                        label = float(st.session_state[key])
+
                     st.session_state[key] = st.text_input(key, 
                                                           value = st.session_state[key], 
                                                           label_visibility = 'collapsed', 
@@ -289,6 +317,45 @@ def generate_output_field(name,
         elif len(units) == 1:
             st.write(units[0])
 
+def generate_dropdown_input_field(name, 
+                                  options, 
+                                  units, 
+                                  label = '', 
+                                  columns_spacing = [2, 3, 1], 
+                                  callback = do_nothing):
+        
+    name_column, input_column, units_column = st.columns(columns_spacing)
+
+    with name_column:
+        st.write(name)
+    
+    with input_column:
+        key = name
+        if float_cast(st.session_state[key]) is not None: #and st.session_state[key] in options:
+            label = str(st.session_state[key])
+        
+        st.selectbox(key, 
+                     options, 
+                     label_visibility = 'collapsed', 
+                     accept_new_options = False, 
+                     index = None, 
+                     placeholder = label, 
+                     on_change = generic_callback, 
+                     args = [callback], 
+                     key = key)
+        
+    with units_column:
+        if len(units) >= 2:
+            key = name + '_unit'
+            st.selectbox(key, 
+                         units, 
+                         label_visibility = 'collapsed', 
+                         accept_new_options = False, 
+                         placeholder = 'unidad', 
+                         key = key)
+        elif len(units) == 1:
+            st.write(units[0])
+
 def generate_title_and_logo(images):
     title_column, logo_column = st.columns([3, 1])
 
@@ -345,7 +412,6 @@ def generate_header_and_dropdowns(valves, fluids):
                      args = [disable_some_data_inputs_if_fluid_is_selected], 
                      key = 'Fluido')
 
-
 def generate_all_input_fields():
 
     generate_input_fields(input_names_to_units = {'Caudal': ['GPM']}, 
@@ -355,21 +421,34 @@ def generate_all_input_fields():
     generate_input_fields(input_names_to_units = {'Presión de entrada': ['PSIG']}, 
                           text_input_boxes_labels = ['mínimo', 'normal', 'máximo'], 
                           columns_spacing = [2, 1, 1])
-    
+
     generate_input_fields(input_names_to_units = {'Presión de salida': ['PSIG']}, 
                           text_input_boxes_labels = ['mínimo', 'normal', 'máximo'], 
                           columns_spacing = [2, 1, 1], 
                           can_be_disabled = True, 
                           callback = disable_pressure_differential)
-    
+    for quantity in ['mínimo', 'normal', 'máximo']:
+        if st.session_state['Presión de salida_' + quantity] is not None and st.session_state['Presión de entrada_' + quantity] is not None:
+            if st.session_state['Presión de salida_' + quantity] >= st.session_state['Presión de entrada_' + quantity]: #AGREGAR MENSAJE DE PRESIÓN DE SALIDA DEBE SER MENOR A LA DE ENTRADA
+               st.session_state['Presión de salida_' + quantity] = None
+
     generate_input_fields(input_names_to_units = {'Diferencia de presión': ['PSI']}, 
                           text_input_boxes_labels = ['mínimo', 'normal', 'máximo'], 
                           can_be_disabled = True, 
                           columns_spacing = [2, 1, 1,], 
                           callback = disable_out_pressure)
     
-    generate_input_fields(input_names_to_units = {'Diámetro nominal': ['in']})
-    
+    if st.session_state['Válvula'] is not None:
+        possible_diameters = sorted(list(st.session_state['Válvula'].Cv.keys()))
+    else:
+        possible_diameters = []
+    generate_dropdown_input_field('Diámetro nominal', 
+                                  possible_diameters, 
+                                  ['in'], 
+                                  label = '', 
+                                  columns_spacing = [2, 3, 1], 
+                                  callback = do_nothing)
+
     generate_input_fields(input_names_to_units = {'Temperatura': ['℃']})
 
     generate_input_fields(input_names_to_units = {'Gravedad específica': ['']}, 
@@ -383,6 +462,76 @@ def generate_all_input_fields():
     
     generate_input_fields(input_names_to_units = {'Velocidad del sonido': ['m/s']}, 
                           can_be_disabled = True)
+
+def generate_all_output_fields(flow, opening, Cv, allowable_pressure_differential, max_velocity, cavitation_message, erosion_message):
+
+    generate_output_field('Caudal', 
+                          [flow['min'], flow['normal'], flow['max']], 
+                          ['GPM'], 
+                          output_boxes_labels = ['mínimo', 'normal', 'máximo'], 
+                          columns_spacing = [2, 1, 1])
+    
+    generate_output_field('Apertura', 
+                          [opening['min'], opening['normal'], opening['max']], 
+                          ['%'], 
+                          output_boxes_labels = ['mínimo', 'normal', 'máximo'], 
+                          columns_spacing = [2, 1, 1])
+    
+    generate_output_field('Cv', 
+                          [Cv['min'], Cv['normal'], Cv['max']], 
+                          ['GPM'], 
+                          output_boxes_labels = ['mínimo', 'normal', 'máximo'], 
+                          columns_spacing = [2, 1, 1])
+    
+    generate_output_field('Diferencia de presión permitida', 
+                          [allowable_pressure_differential['min'], allowable_pressure_differential['normal'], allowable_pressure_differential['max']], 
+                          ['PSI'], 
+                          output_boxes_labels = ['mínimo', 'normal', 'máximo'], 
+                          columns_spacing = [2, 1, 1])
+
+    generate_output_field('Velocidad máxima', 
+                          [max_velocity], 
+                          ['ft/s'])
+    
+    generate_output_field('Ruido estimado', 
+                          [None], 
+                          ['dB'])
+    
+    generate_output_field('Estabilidad de la válvula', 
+                          [cavitation_message, None, erosion_message], 
+                          [''], 
+                          output_boxes_labels = ['Cavitación', 'Flashing?', 'Erosión'], 
+                          columns_spacing = [2, 1, 1])
+
+def plot_opening_vs_flow(valve, diameter, pressure_differential, extra_openings, extra_flows):
+
+    all_openings = list(valve.Cv[diameter].keys())
+    min_opening, max_opening = min(all_openings), max(all_openings)
+
+    opening_to_flow = {}
+    for quantity in ['min', 'normal', 'max']:
+        extra_flows[quantity], extra_openings[quantity] = float_cast(extra_flows[quantity]), float_cast(extra_openings[quantity])
+        if extra_openings[quantity] is not None and extra_flows[quantity] is not None:
+            if extra_openings[quantity] >= min_opening and extra_openings[quantity] <= max_opening:
+                opening_to_flow[round(extra_openings[quantity], 1)] = round(extra_flows[quantity])
+
+    for opening in all_openings:
+        Cv = valve.Cv[diameter][opening]
+        approximated_pressure_differential = pressure_differential #CAMBIAR ESTO SEGÚN SE REQUIERA Y AGREGAR A PARÁMETROS DE FUNCIÓN
+        flow = float_cast(backend.calculate_flow_from_Cv(Cv, specific_gravity, approximated_pressure_differential))
+        if opening is not None and flow is not None:
+            opening_to_flow[opening] = round(flow)
+
+    all_openings = sorted(opening_to_flow.keys())
+    all_flows = [opening_to_flow[opening] for opening in all_openings]
+
+    if all_openings == []:
+        return
+
+    plot = go.Figure()
+    plot.add_trace(go.Scatter(x = all_openings, y = all_flows, mode = 'lines+markers'))
+    plot.update_layout(xaxis_title = 'Apertura de la válvula (%)', yaxis_title = f'Caudal ({st.session_state['Caudal_unit']})')
+    st.plotly_chart(plot)#, theme = None)
 
 
 #-----------------------------------------------------------------------------------------------------------------------------------------------
@@ -431,7 +580,7 @@ generate_title_and_logo(images)
 input_column, separator_column, output_column = st.columns([19.5, 1, 19.5])
 
 with separator_column:
-    vertical_divider(height = 640)
+    vertical_divider(height = 920)
 
 with input_column:
     generate_header_and_dropdowns(valves, fluids)
@@ -440,85 +589,29 @@ with input_column:
 valve, fluid, flow, in_pressure, out_pressure, pressure_differential, diameter, temperature = assign_all_input_variables()
 specific_gravity, vapor_pressure, viscosity, speed_of_sound = assign_all_database_variables()
 
-Reynolds_number, correction_factor, Cv, opening, FL, allowable_pressure_differential, velocity, is_cavitating, is_eroding = {}, {}, {}, {}, {}, {}, {}, {}, {}
+(Reynolds_number, correction_factor, Cv, opening, FL, allowable_pressure_differential, 
+ velocity, is_cavitating, is_eroding, max_velocity, cavitation_message, erosion_message
+) = calculate_and_assign_all_output_variables(valve, flow, in_pressure, pressure_differential, 
+                                              diameter, specific_gravity, vapor_pressure, viscosity, speed_of_sound)
 
-for quantity in ['min', 'normal', 'max']:
-    Reynolds_number[quantity] = backend.calculate_Reynolds_number(flow[quantity], diameter, viscosity, valve)
-    correction_factor[quantity] = backend.get_Reynolds_correction_factor(Reynolds_number[quantity])
-    if Reynolds_number[quantity] is not None:
-        if Reynolds_number[quantity] < 1:
-            pass #WARNING FLUIDO DEMASIADO VISCOSO EN ESE DIÁMETRO Y CAUDAL #incluir para 10, 1, y 0.1
-    Cv[quantity] = multiply_handling_type(correction_factor[quantity], backend.calculate_flow_coefficient_Cv(specific_gravity, flow[quantity], pressure_differential[quantity]))
-    opening[quantity] = backend.calculate_opening_percentage_at_Cv(Cv[quantity], diameter, valve)
-    if opening[quantity] is not None:
-        if opening[quantity] < 10:
-            pass #WARNING APERTURA MUY PEQUEÑA
-        if opening[quantity] > 100:
-            pass #WARNING APERTURA MÁXIMA INSUFICIENTE, CAMBIAR CAUDAL Y CV A APERTURA MÁXIMA
-    FL[quantity] = backend.get_pressure_recovery_factor_FL(opening[quantity], valve)
-    allowable_pressure_differential[quantity] = backend.calculate_allowable_pressure_differential_without_cavitation(FL[quantity], in_pressure[quantity], vapor_pressure, valve)
-    velocity[quantity] = backend.calculate_in_velocity(flow[quantity], diameter)
-    is_cavitating[quantity] = gt_handling_type(pressure_differential[quantity], allowable_pressure_differential[quantity])
-    if valve is not None:
-        is_eroding[quantity] = gt_handling_type(velocity[quantity], valve.max_velocity_without_erosion)
-max_velocity = max([velocity for velocity in velocity.values() if velocity is not None], default = None)
-cavitation_message = 'Sí cavita' if True in is_cavitating.values() else 'No cavita'
-erosion_message = 'Sí erosión' if True in is_eroding.values() else 'No erosión'
+with output_column:
+    st.subheader('‎')
+    st.subheader('‎')
+    generate_all_output_fields(flow, opening, Cv, allowable_pressure_differential, max_velocity, cavitation_message, erosion_message)
+
+    plot_column = st.columns([5, 1])[0]
+    with plot_column:
+        TESTPRESSUREDIFF = pressure_differential['min']
+        st.session_state['Caudal_unit'] = 'GPM' #temporal
+        plot_opening_vs_flow(valve, diameter, TESTPRESSUREDIFF, opening, flow)
 
 #caudal, apertura, Cv, velocidad, cavitación check
 #Falta ruido y erosión / abrasión para pegar todo. luego preguntar diámetro propuesto, y preguntar detalle gráfico y hacerlo.
 #Falta flashing, erosión / abrasión, ruido estimado, diámetro propuesto(?), gráfico
 
 
-with output_column:
-    st.subheader('‎')
-    st.subheader('‎')
-    
-    generate_output_field('Caudal', 
-                          [flow['min'], flow['normal'], flow['max']], 
-                          ['GPM'], 
-                          output_boxes_labels = ['mínimo', 'normal', 'máximo'], 
-                          columns_spacing = [2, 1, 1])
-    
-    generate_output_field('Apertura', 
-                          [opening['min'], opening['normal'], opening['max']], 
-                          ['%'], 
-                          output_boxes_labels = ['mínimo', 'normal', 'máximo'], 
-                          columns_spacing = [2, 1, 1])
-    
-    generate_output_field('Cv', 
-                          [Cv['min'], Cv['normal'], Cv['max']], 
-                          ['GPM'], 
-                          output_boxes_labels = ['mínimo', 'normal', 'máximo'], 
-                          columns_spacing = [2, 1, 1])
-    
-    generate_output_field('Diferencia de presión permitida', 
-                          [allowable_pressure_differential['min'], allowable_pressure_differential['normal'], allowable_pressure_differential['max']], 
-                          ['PSI'], 
-                          output_boxes_labels = ['mínimo', 'normal', 'máximo'], 
-                          columns_spacing = [2, 1, 1])
 
-    generate_output_field('Velocidad máxima', 
-                          [max_velocity], 
-                          ['ft/s'], 
-                          columns_spacing = [2, 3, 1])
-    
-    generate_output_field('Ruido estimado', 
-                          [None], 
-                          ['dB'], 
-                          columns_spacing = [2, 3, 1])
-    
-    generate_output_field('Estabilidad de la válvula', 
-                          [cavitation_message, None, erosion_message], 
-                          [''], 
-                          output_boxes_labels = ['Cavitación', 'Flashing', 'Erosión'], 
-                          columns_spacing = [2, 1, 1])
-
-
-
-
-
-if st.session_state['rerun']: #Reruns on any text input to avoid lag
+if st.session_state['rerun']: #Reruns on any text input or selection, to avoid input lag
     st.session_state['rerun'] = False
     st.rerun()
 
