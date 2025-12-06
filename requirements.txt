@@ -3,3 +3,4 @@ pillow
 unidecode
 plotly
 orjson
+pint
