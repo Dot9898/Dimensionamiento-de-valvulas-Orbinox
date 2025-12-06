@@ -6,6 +6,7 @@ from PIL import Image
 import base64
 from io import BytesIO
 import plotly.graph_objects as go
+import pint
 import streamlit as st
 import backend
 
@@ -17,9 +18,11 @@ LOGO_WIDTH = 200
 #Utilities
 
 def float_cast(input):
+    if isinstance(input, pint.Quantity):
+        return
     try:
         return(float(input))
-    except (ValueError, TypeError):
+    except(ValueError, TypeError):
         return(None)
 
 def substract_handling_type(x, y):
@@ -173,7 +176,24 @@ def generic_callback(callback):
     callback()
     st.session_state['rerun'] = True
 
-def disable_pressure_differential(): #Presión de salida callback
+def text_input_callback(callback, name, text_input_boxes_labels):
+    unit_key = name + '_unit'
+    unit = st.session_state[unit_key]
+    real_keys = [name + '_' + label for label in text_input_boxes_labels]
+
+    if isinstance(unit, pint.Unit):
+        for key in real_keys:
+            magnitude = float_cast(st.session_state['_' + key])
+            print('\n\n\n\n', magnitude, '\n\n\n\n')
+            if magnitude is None:
+                st.session_state[key] = None
+            else:
+                st.session_state[key] = magnitude * unit
+
+    callback()
+    st.session_state['rerun'] = True
+
+def disable_pressure_differential(args): #Presión de salida callback
     
     is_disabled = False
     
@@ -184,7 +204,7 @@ def disable_pressure_differential(): #Presión de salida callback
     for key in ['Diferencia de presión_mínimo', 'Diferencia de presión_normal', 'Diferencia de presión_máximo']:
         st.session_state[key + '_is_disabled'] = is_disabled
 
-def disable_out_pressure(): #Presión de salida callback
+def disable_out_pressure(args): #Presión de salida callback
     
     is_disabled = False
     
@@ -195,7 +215,7 @@ def disable_out_pressure(): #Presión de salida callback
     for key in ['Presión de salida_mínimo', 'Presión de salida_normal', 'Presión de salida_máximo']:
         st.session_state[key + '_is_disabled'] = is_disabled
 
-def disable_some_data_inputs_if_fluid_is_selected(): #Fluido callback
+def disable_some_data_inputs_if_fluid_is_selected(args): #Fluido callback
 
     is_disabled = True
     fluid = st.session_state['Fluido']
@@ -226,59 +246,76 @@ def vertical_divider(height):
         '''
     )
 
-def generate_input_fields(input_names_to_units, 
-                          text_input_boxes_labels = [''], 
-                          columns_spacing = [2, 3, 1], #[largo de los nombres, largo de cada text input, largo de las unidades]
-                          can_be_disabled = False, 
-                          callback = do_nothing):
+def generate_input_field(name, 
+                         units, 
+                         text_input_boxes_labels = [''], 
+                         columns_spacing = [2, 3, 1], #[largo de los nombres, largo de cada text input, largo de las unidades]
+                         can_be_disabled = False, 
+                         callback = do_nothing):
     number_of_text_inputs = len(text_input_boxes_labels)
-    columns_spacing[1] = columns_spacing[1]*number_of_text_inputs
-    
-    for name in input_names_to_units:
-        names_column, inputs_column, units_column = st.columns(columns_spacing) #Las columnas se regeneran en cada fila (name) para alinear correctamente los nombres y los text input
-        
-        with names_column:
-            st.write(name)
+    columns_spacing[1] = columns_spacing[1] * number_of_text_inputs
 
-        with inputs_column:
-            inputs_subcolumns = st.columns([1]*number_of_text_inputs)
-            for index in range(len(inputs_subcolumns)):
-                with inputs_subcolumns[index]:
+    names_column, inputs_column, units_column = st.columns(columns_spacing)  # Las columnas se regeneran en cada fila (name) para alinear correctamente los nombres y los text input
 
-                    label = text_input_boxes_labels[index]
-                    if label != '':
-                        key = name + '_' + label
-                    else:
-                        key = name
+    with names_column:
+        st.write(name)
 
-                    disabled_state = False
-                    if can_be_disabled:
-                        disabled_state = st.session_state[key + '_is_disabled']
+    with units_column:
+        if units != []:
+            unit_key = name + '_unit'
+            old_unit_key = unit_key + '_old'
+            ureg = st.session_state['ureg']
+            st.session_state[unit_key] = ureg[st.selectbox(unit_key, 
+                                                            units, 
+                                                            label_visibility = 'collapsed', 
+                                                            accept_new_options = False, 
+                                                            placeholder = units[0], 
+                                                            on_change = generic_callback, 
+                                                            args = [do_nothing], 
+                                                            key='_' + unit_key)]
+            unit = st.session_state[unit_key]
+            old_unit = st.session_state[old_unit_key]  
 
-                    if float_cast(st.session_state[key]) is not None:
-                        label = float(st.session_state[key])
+            for label in text_input_boxes_labels:
+                if label != '':
+                    key = name + '_' + label
+                else:
+                    key = name
+                if unit != old_unit:
+                    if isinstance(st.session_state[key], pint.Quantity):
+                        st.session_state[key] = st.session_state[key].to(unit)
 
-                    st.session_state[key] = st.text_input(key, 
-                                                          value = st.session_state[key], 
-                                                          label_visibility = 'collapsed', 
-                                                          placeholder = label, 
-                                                          on_change = generic_callback,
-                                                          args = [callback], 
-                                                          disabled = disabled_state, 
-                                                          key = '_' + key)
-                    
-        with units_column:
-            units = input_names_to_units[name]
-            if len(units) >= 2:
-                key = name + '_unit'
-                st.selectbox(key, 
-                             units, 
-                             label_visibility = 'collapsed', 
-                             accept_new_options = False, 
-                             placeholder = 'unidad', 
-                             key = key)
-            elif len(units) == 1:
-                st.write(units[0])
+            st.session_state[old_unit_key] = st.session_state[unit_key]
+
+    with inputs_column:
+        inputs_subcolumns = st.columns([1] * number_of_text_inputs)
+        for index in range(len(inputs_subcolumns)):
+            with inputs_subcolumns[index]:
+
+                label = text_input_boxes_labels[index]
+                if label != '':
+                    key = name + '_' + label
+                else:
+                    key = name
+
+                disabled_state = False
+                if can_be_disabled:
+                    disabled_state = st.session_state[key + '_is_disabled']
+                
+                if isinstance(st.session_state[key], pint.Quantity):
+                    st.session_state['_' + key] = str(round(st.session_state[key].magnitude, 1))
+
+                st.session_state[key] = st.text_input(key, 
+                                                        label_visibility = 'collapsed', 
+                                                        placeholder = label, 
+                                                        on_change = text_input_callback, 
+                                                        args = [callback, name, text_input_boxes_labels], 
+                                                        disabled = disabled_state, 
+                                                        key = '_' + key)
+
+                st.session_state[key] = float_cast(st.session_state[key])
+                if isinstance(st.session_state[key], float):
+                    st.session_state[key] = st.session_state[key] * unit
 
 def generate_output_field(name, 
                           values, 
@@ -419,29 +456,33 @@ def generate_header_and_dropdowns(valves, fluids):
 
 def generate_all_input_fields():
 
-    generate_input_fields(input_names_to_units = {'Caudal': ['GPM']}, 
-                          text_input_boxes_labels = ['mínimo', 'normal', 'máximo'], 
-                          columns_spacing = [2, 1, 1])
+    generate_input_field('Caudal', 
+                         ['GPM', 'L/min', 'm³/h'], 
+                         text_input_boxes_labels = ['mínimo', 'normal', 'máximo'], 
+                         columns_spacing = [2, 1, 1])
     
-    generate_input_fields(input_names_to_units = {'Presión de entrada': ['PSIG']}, 
+    generate_input_field('Presión de entrada', 
+                         ['PSIG'], 
                           text_input_boxes_labels = ['mínimo', 'normal', 'máximo'], 
                           columns_spacing = [2, 1, 1])
 
-    generate_input_fields(input_names_to_units = {'Presión de salida': ['PSIG']}, 
-                          text_input_boxes_labels = ['mínimo', 'normal', 'máximo'], 
-                          columns_spacing = [2, 1, 1], 
-                          can_be_disabled = True, 
-                          callback = disable_pressure_differential)
+    generate_input_field('Presión de salida', 
+                         ['PSIG'], 
+                         text_input_boxes_labels = ['mínimo', 'normal', 'máximo'], 
+                         columns_spacing = [2, 1, 1], 
+                         can_be_disabled = True, 
+                         callback = disable_pressure_differential)
     for quantity in ['mínimo', 'normal', 'máximo']:
         if st.session_state['Presión de salida_' + quantity] is not None and st.session_state['Presión de entrada_' + quantity] is not None:
             if st.session_state['Presión de salida_' + quantity] >= st.session_state['Presión de entrada_' + quantity]: #AGREGAR MENSAJE DE PRESIÓN DE SALIDA DEBE SER MENOR A LA DE ENTRADA
                st.session_state['Presión de salida_' + quantity] = None
 
-    generate_input_fields(input_names_to_units = {'Diferencia de presión': ['PSI']}, 
-                          text_input_boxes_labels = ['mínimo', 'normal', 'máximo'], 
-                          can_be_disabled = True, 
-                          columns_spacing = [2, 1, 1,], 
-                          callback = disable_out_pressure)
+    generate_input_field('Diferencia de presión', 
+                         ['PSI'], 
+                         text_input_boxes_labels = ['mínimo', 'normal', 'máximo'], 
+                         can_be_disabled = True, 
+                         columns_spacing = [2, 1, 1,], 
+                         callback = disable_out_pressure)
     
     if st.session_state['Válvula'] is not None:
         possible_diameters = sorted(list(st.session_state['Válvula'].Cv.keys()))
@@ -454,19 +495,24 @@ def generate_all_input_fields():
                                   columns_spacing = [2, 3, 1], 
                                   callback = do_nothing)
 
-    generate_input_fields(input_names_to_units = {'Temperatura': ['℃']})
+    generate_input_field('Temperatura', 
+                         ['°C'])
 
-    generate_input_fields(input_names_to_units = {'Gravedad específica': ['']}, 
-                          can_be_disabled = True)
+    generate_input_field('Gravedad específica', 
+                         [], 
+                         can_be_disabled = True)
     
-    generate_input_fields(input_names_to_units = {'Presión de vapor': ['PSIA']}, 
-                          can_be_disabled = True)
+    generate_input_field('Presión de vapor', 
+                         ['PSIA'], 
+                         can_be_disabled = True)
     
-    generate_input_fields(input_names_to_units = {'Viscosidad': ['cSt']}, 
-                          can_be_disabled = True)
+    generate_input_field('Viscosidad', 
+                         ['cSt'], 
+                         can_be_disabled = True)
     
-    generate_input_fields(input_names_to_units = {'Velocidad del sonido': ['m/s']}, 
-                          can_be_disabled = True)
+    generate_input_field('Velocidad del sonido', 
+                         ['m/s'], 
+                         can_be_disabled = True)
 
 def generate_all_output_fields(flow, opening, Cv, allowable_pressure_differential, max_velocity, cavitation_message, erosion_message):
 
@@ -555,33 +601,26 @@ def plot_opening_vs_flow(valve, diameter, pressure_differential, extra_openings,
 valves, fluids = backend.get_data()
 images = load_images()
 
+if 'ureg' not in st.session_state:
+    st.session_state['ureg'] = pint.UnitRegistry()
+    st.session_state['ureg'].load_definitions(ROOT_PATH / 'data/pint_extra_units.txt')
 
 #Key initialization
 
-keys = ['Válvula',
-        'Fluido',
-        'Caudal_mínimo', 'Caudal_normal', 'Caudal_máximo', 'Caudal_unit', 
-        'Presión de entrada_mínimo', 'Presión de entrada_normal', 'Presión de entrada_máximo', 'Presión de entrada_unit', 
-        'Presión de salida_mínimo', 'Presión de salida_normal', 'Presión de salida_máximo', 'Presión de salida_unit', 
-        'Diferencia de presión_mínimo', 'Diferencia de presión_normal', 'Diferencia de presión_máximo', 'Diferencia de presión_unit', 
-        'Diámetro nominal', 'Diámetro nominal_unit', 
-        'Temperatura','Temperatura_unit', 
-        'Gravedad específica', 'Gravedad específica_unit', 
-        'Presión de vapor', 'Presión de vapor_unit', 
-        'Viscosidad', 'Viscosidad_unit', 
-        'Velocidad del sonido', 'Velocidad del sonido_unit']
+single_names = ['Válvula', 'Fluido', 'Diámetro nominal', 'Temperatura', 'Gravedad específica', 'Presión de vapor', 'Viscosidad', 'Velocidad del sonido']
+single_keys = single_names
+triple_names = ['Caudal', 'Presión de entrada', 'Presión de salida', 'Diferencia de presión']
+triple_keys = [name + '_' + quantity for name in triple_names for quantity in ['mínimo', 'normal', 'máximo']]
 
-text_input_disablers_keys = ['Presión de salida_mínimo_is_disabled', 'Presión de salida_normal_is_disabled', 'Presión de salida_máximo_is_disabled', 
-                             'Diferencia de presión_mínimo_is_disabled', 'Diferencia de presión_normal_is_disabled', 'Diferencia de presión_máximo_is_disabled', 
-                             'Gravedad específica_is_disabled', 
-                             'Presión de vapor_is_disabled', 
-                             'Viscosidad_is_disabled', 
-                             'Velocidad del sonido_is_disabled']
+widget_keys = ['_' + key for key in single_keys + triple_keys]
+units_keys = [name + '_unit' for name in single_names + triple_names]
+old_units_keys = [key + '_old' for key in units_keys]
+disablers_keys = [key + '_is_disabled' for key in single_keys + triple_keys]
 
 defaults = {}
-for key in keys:
+for key in single_keys + triple_keys + units_keys + old_units_keys:
     defaults[key] = None
-for key in text_input_disablers_keys:
+for key in disablers_keys:
     defaults[key] = False
 defaults['rerun'] = False
 init_session_state(defaults)
@@ -618,7 +657,6 @@ with output_column:
     plot_column = st.columns([5, 1])[0]
     with plot_column:
         TESTPRESSUREDIFF = pressure_differential['min']
-        st.session_state['Caudal_unit'] = 'GPM' #temporal
         plot_opening_vs_flow(valve, diameter, TESTPRESSUREDIFF, opening, flow)
 
 #caudal, apertura, Cv, velocidad, cavitación check
@@ -635,7 +673,10 @@ if st.session_state['rerun']: #Reruns on any text input or selection, to avoid i
 
 
 
-
+#seguir primero con el overwrite text inputs, después con el diameter selectbox, 
+#después el flujo general considerando las unidades, después ordenar la carpeta data, 
+#después agregar fluidos nuevos, después válvulas nuevas, 
+#y después todo lo demás (incluido gráfico y alineamiento)
 
 
 

@@ -1,0 +1,3 @@
+gallon_per_minute = gallon / minute = GPM
+@alias psi = PSIG = PSI
+absolute_pressure = PSIG; offset: 14.6959 = PSIA
