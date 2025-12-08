@@ -260,6 +260,7 @@ def generate_input_field(name,
     with names_column:
         st.write(name)
 
+    overwrite_text_input = False
     with units_column:
         if units != []:
             unit_key = name + '_unit'
@@ -284,6 +285,7 @@ def generate_input_field(name,
                 if unit != old_unit:
                     if isinstance(st.session_state[key], pint.Quantity):
                         st.session_state[key] = st.session_state[key].to(unit)
+                        overwrite_text_input = True
 
             st.session_state[old_unit_key] = st.session_state[unit_key]
 
@@ -302,8 +304,9 @@ def generate_input_field(name,
                 if can_be_disabled:
                     disabled_state = st.session_state[key + '_is_disabled']
                 
-                if isinstance(st.session_state[key], pint.Quantity):
-                    st.session_state['_' + key] = str(round(st.session_state[key].magnitude, 1))
+                if overwrite_text_input:
+                    if isinstance(st.session_state[key], pint.Quantity):
+                        st.session_state['_' + key] = str(round(st.session_state[key].magnitude, 1))
 
                 st.session_state[key] = st.text_input(key, 
                                                         label_visibility = 'collapsed', 
