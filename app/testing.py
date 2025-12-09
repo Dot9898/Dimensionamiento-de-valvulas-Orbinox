@@ -18,7 +18,7 @@ print(ureg['LPM'])
 
 
 
-
+ureg.Quantity(float, pint.Unit) #ureg.meter por ejemplo
 
 
 

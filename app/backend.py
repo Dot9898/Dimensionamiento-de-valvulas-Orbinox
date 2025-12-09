@@ -5,9 +5,9 @@ from pathlib import Path
 import csv
 from unidecode import unidecode
 from functools import lru_cache
-from math import sqrt
 from math import pi
 from math import log10
+import pint
 
 import streamlit as st
 
@@ -119,21 +119,21 @@ def get_linear_approximation_from_dict(x_target,
     y_target = linear_approximation(x_target, x_below, y_below, x_above, y_above)
     return(y_target)
 
-def process_two_column_csv_to_dict(csv_path, target_dict, header = True):
+def process_two_column_csv_to_dict(csv_path, target_dict, ureg, keys_unit, values_unit, header = True):
     with open(csv_path, mode ='r', encoding = 'utf-8') as file:
         csv_values = csv.reader(file)
         for line in csv_values:
             if header:
                 header = False
                 continue
-            key = float(line[0])
-            value = float(line[1])
+            key = ureg.Quantity(float(line[0]), keys_unit)
+            value = ureg.Quantity(float(line[1]), values_unit)
             target_dict[key] = value
 
 
 #Data processing
 
-def _load_valves():
+def load_valves(ureg):
     
     valve_names = []
     with open(DATA_PATH / 'valve_names.csv', mode ='r', encoding = 'utf-8') as file:
@@ -151,11 +151,13 @@ def _load_valves():
         valve_name_to_Valve[valve.name] = valve
 
     for valve in Valve.all:
-
+        
         FL_path = DATA_PATH / 'FL_vs_opening' / (valve.name + '.csv')
         target = valve.FL
-        process_two_column_csv_to_dict(FL_path, target)
-
+        opening_unit = ureg.dimensionless
+        FL_unit = ureg.dimensionless
+        process_two_column_csv_to_dict(FL_path, target, ureg, opening_unit, FL_unit)
+        
         header = True
         with open(DATA_PATH / 'Cv_vs_opening' / (valve.name + '.csv'), mode ='r', encoding = 'utf-8') as file:
             csv_values = csv.reader(file)
@@ -164,17 +166,19 @@ def _load_valves():
                     openings_percentages = list(map(float, line[1:]))
                     header = False
                     continue
-                diameter = float(line[0])
+                diameter = ureg.Quantity(float(line[0]), ureg.inch)
                 valve.Cv[diameter] = {}
                 Cv_values = map(float, line[1:])
                 for opening, Cv in zip(openings_percentages, Cv_values):
+                    opening = ureg.Quantity(opening, ureg.dimensionless)
+                    Cv = ureg.Quantity(Cv, ureg.gallon_per_minute)
                     valve.Cv[diameter][opening] = Cv
         valve.fill_Cv_to_opening()         
 
     valves = sorted(Valve.all, key = lambda valve: clean_string(valve.name))
     return(valves)
 
-def _load_fluids():
+def load_fluids(ureg):
 
     fluid_names = []
     with open(DATA_PATH / 'fluid_names.csv', mode ='r', encoding = 'utf-8') as file:
@@ -188,14 +192,17 @@ def _load_fluids():
         Fluid.all.append(fluid)
 
     for fluid in Fluid.all:
-        paths_to_target_dicts = {DATA_PATH / 'specific_gravity_vs_temperature' / (fluid.name + '.csv'): fluid.specific_gravity, 
-                                 DATA_PATH / 'vapor_pressure_vs_temperature' / (fluid.name + '.csv'): fluid.vapor_pressure, 
-                                 DATA_PATH / 'speed_of_sound_vs_temperature' / (fluid.name + '.csv'): fluid.speed_of_sound, 
-                                 DATA_PATH / 'viscosity_vs_temperature' / (fluid.name + '.csv'):  fluid.viscosity}
+        names_to_data = {'specific_gravity': [DATA_PATH / 'specific_gravity_vs_temperature' / (fluid.name + '.csv'), fluid.specific_gravity, ureg.dimensionless], 
+                         'vapor_pressure': [DATA_PATH / 'vapor_pressure_vs_temperature' / (fluid.name + '.csv'), fluid.vapor_pressure, ureg.absolute_pressure], 
+                         'speed_of_sound': [DATA_PATH / 'speed_of_sound_vs_temperature' / (fluid.name + '.csv'), fluid.speed_of_sound, ureg.meter_per_second], 
+                         'viscosity': [DATA_PATH / 'viscosity_vs_temperature' / (fluid.name + '.csv'),  fluid.viscosity, ureg.centistokes]}
         
-        for path in paths_to_target_dicts:
-            target = paths_to_target_dicts[path]
-            process_two_column_csv_to_dict(path, target)
+        temperature_unit = ureg.degree_Celsius
+        for name in names_to_data:
+            path = names_to_data[name][0]
+            target = names_to_data[name][1]
+            value_unit = names_to_data[name][2]
+            process_two_column_csv_to_dict(path, target, ureg, temperature_unit, value_unit)
 
     fluids = sorted(Fluid.all, key = lambda fluid: clean_string(fluid.name))
 
@@ -205,10 +212,11 @@ def _load_fluids():
 
     return(fluids)
 
-@lru_cache(maxsize = 1)
-def _get_Reynolds_number_to_correction_factor():
+def get_Reynolds_number_to_correction_factor(ureg):
     Reynolds_number_to_correction_factor = {}
-    process_two_column_csv_to_dict(DATA_PATH / 'Reynolds_number_vs_correction_factor.csv', Reynolds_number_to_correction_factor)
+    Reynolds_number_unit = ureg.dimensionless
+    correction_factor_unit = ureg.dimensionless
+    process_two_column_csv_to_dict(DATA_PATH / 'Reynolds_number_vs_correction_factor.csv', Reynolds_number_to_correction_factor, ureg, Reynolds_number_unit, correction_factor_unit)
     return(Reynolds_number_to_correction_factor)
 
 @lru_cache(maxsize = 1)
@@ -224,10 +232,6 @@ def _get_noise_factor_C_data():
 
     return(noise_factor_C_not_cavitating, noise_factor_C_cavitating)
 
-@lru_cache(maxsize = 1)
-def get_data(edit_this_string_to_force_cache_clear_in_streamlit_cloud = 'v2'):
-    return(_load_valves(), _load_fluids())
-
 
 #Sizing calculations
 
@@ -236,7 +240,8 @@ def calculate_flow_coefficient_Cv(specific_gravity,         #Dimensionless
                                   pressure_differential):   #PSIG
     if specific_gravity is None or flow is None or pressure_differential is None:
         return(None)
-    Cv = flow * sqrt(specific_gravity / pressure_differential)
+    root = ((specific_gravity / pressure_differential) ** (1/2)).magnitude
+    Cv = flow * root
     return(Cv)
 
 def calculate_flow_from_Cv(Cv, 
@@ -244,7 +249,7 @@ def calculate_flow_from_Cv(Cv,
                            pressure_differential):
     if Cv is None or specific_gravity is None or pressure_differential is None:
         return(None)
-    flow = Cv * sqrt(pressure_differential / specific_gravity)
+    flow = Cv * (pressure_differential / specific_gravity) ** (1/2)
     return(flow)
 
 def calculate_Reynolds_number(flow,        #GPM
@@ -256,14 +261,13 @@ def calculate_Reynolds_number(flow,        #GPM
     Reynolds_number = 3160 * flow / (diameter * viscosity) * valve.Reynolds_factor #CHEQUEAR FACTOR PARA OTRO TIPO DE VÁLVULAS
     return(Reynolds_number)
 
-def get_Reynolds_correction_factor(Reynolds_number):
+def get_Reynolds_correction_factor(Reynolds_number, Reynolds_to_correction):
     if Reynolds_number is None:
         return(None)
     if Reynolds_number > 4999.9:
         return(1.0)
     if Reynolds_number < 0.011:
         return(240.0)
-    Reynolds_to_correction = _get_Reynolds_number_to_correction_factor()
     correction_factor = get_linear_approximation_from_dict(Reynolds_number, Reynolds_to_correction)
     return(correction_factor)
 
@@ -296,7 +300,7 @@ def calculate_allowable_pressure_differential_without_cavitation(pressure_recove
 
 def calculate_in_velocity(flow, #GPM
                           diameter): #inches
-    if flow is None or diameter is None:
+    if not isinstance(flow, pint.Quantity) or not isinstance(diameter, pint.Quantity):
         return(None)
     ratio = diameter / 2
     area = PI * ratio**2

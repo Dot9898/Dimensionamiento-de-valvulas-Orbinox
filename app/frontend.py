@@ -154,7 +154,7 @@ def calculate_and_assign_all_output_variables(valve, flow, in_pressure, pressure
     is_opening_more_than_max_opening = {'min': False, 'normal': False, 'max': False}
     for quantity in ['min', 'normal', 'max']:
         Reynolds_number[quantity] = backend.calculate_Reynolds_number(flow[quantity], diameter, viscosity, valve)
-        correction_factor[quantity] = backend.get_Reynolds_correction_factor(Reynolds_number[quantity])
+        correction_factor[quantity] = backend.get_Reynolds_correction_factor(Reynolds_number[quantity], st.session_state['Reynolds_to_correction'])
         if Reynolds_number[quantity] is not None:
             if Reynolds_number[quantity] < 1:
                 pass #WARNING FLUIDO DEMASIADO VISCOSO EN ESE DIÁMETRO Y CAUDAL #incluir para 10, 1, y 0.1
@@ -170,7 +170,9 @@ def calculate_and_assign_all_output_variables(valve, flow, in_pressure, pressure
         velocity[quantity] = backend.calculate_in_velocity(flow[quantity], diameter)
         is_cavitating[quantity] = gt_handling_type(pressure_differential[quantity], allowable_pressure_differential[quantity])
         if valve is not None:
-            is_eroding[quantity] = gt_handling_type(velocity[quantity], valve.max_velocity_without_erosion)
+            max_velocity_allowed_fps = valve.max_velocity_without_erosion * st.session_state['ureg'].foot_per_second
+            max_velocity_allowed = max_velocity_allowed_fps #.TO OUTPUT FIELD VELOCITY UNIT, CHEQUEAR BIEN ESTO, hacer ejemplo a mano de la conversión, debe ser bueno para ft/s y fallar para la nueva unidad
+            is_eroding[quantity] = gt_handling_type(velocity[quantity], max_velocity_allowed)
     #if True in is_opening_more_than_max_opening.values():
 
     max_velocity = max([velocity for velocity in velocity.values() if velocity is not None], default = None)
@@ -282,16 +284,15 @@ def generate_input_field(name,
         if units != []:
             unit_key = name + '_unit'
             old_unit_key = unit_key + '_old'
-            ureg = st.session_state['ureg']
-            st.session_state[unit_key] = ureg[st.selectbox(unit_key, 
-                                                            units, 
-                                                            label_visibility = 'collapsed', 
-                                                            accept_new_options = False, 
-                                                            placeholder = units[0], 
-                                                            on_change = generic_callback, 
-                                                            args = [do_nothing], 
-                                                            key='_' + unit_key)]
-            unit = st.session_state[unit_key]
+            st.session_state[unit_key] = st.session_state['ureg'][st.selectbox(unit_key, 
+                                                                               units, 
+                                                                               label_visibility = 'collapsed', 
+                                                                               accept_new_options = False, 
+                                                                               placeholder = units[0], 
+                                                                               on_change = generic_callback, 
+                                                                               args = [do_nothing], 
+                                                                               key='_' + unit_key)]
+            unit = st.session_state[unit_key]  
             old_unit = st.session_state[old_unit_key]  
 
             for label in text_input_boxes_labels:
@@ -324,7 +325,7 @@ def generate_input_field(name,
                 if st.session_state['overwrite_text_input'][key]:
                     previous = st.session_state['_' + key]
                     if isinstance(st.session_state[key], pint.Quantity):
-                        st.session_state['_' + key] = str(round(st.session_state[key].magnitude, 1))
+                        st.session_state['_' + key] = str(round(st.session_state[key].magnitude, 1)) #AGREGAR ROUNDING PARA CADA CAJA EN LAS TEXT INPUT FUNCTION CALLS
                     current = st.session_state['_' + key]
                     if current != previous: #Try to overwrite until it actually changes. Useful to handle Streamlit flow.
                         st.session_state['overwrite_text_input'][key] = False
@@ -339,7 +340,7 @@ def generate_input_field(name,
 
                 st.session_state[key] = float_cast(st.session_state[key])
                 if isinstance(st.session_state[key], float):
-                    st.session_state[key] = st.session_state[key] * unit
+                    st.session_state[key] = st.session_state['ureg'].Quantity(st.session_state[key], unit)
 
 def generate_output_field(name, 
                           values, 
@@ -452,13 +453,13 @@ def generate_title_and_logo(images):
     
     st.write('')
     
-def generate_header_and_dropdowns(valves, fluids):
+def generate_header_and_dropdowns():
     st.subheader('Condiciones de trabajo')
     valve_selection_column, fluid_selection_column, empty_column = st.columns([2, 3, 1])
 
     with valve_selection_column:
         st.selectbox('Tipo de válvula', 
-                     valves, 
+                     st.session_state['valves'], 
                      label_visibility = 'collapsed', 
                      accept_new_options = False, 
                      index = None, 
@@ -469,7 +470,7 @@ def generate_header_and_dropdowns(valves, fluids):
 
     with fluid_selection_column:
         st.selectbox('Fluido', 
-                     fluids, 
+                     st.session_state['fluids'], 
                      label_visibility = 'collapsed', 
                      accept_new_options = False, 
                      index = None, 
@@ -623,12 +624,20 @@ def plot_opening_vs_flow(valve, diameter, pressure_differential, extra_openings,
 
 #-----------------------------------------------------------------------------------------------------------------------------------------------
 
-valves, fluids = backend.get_data()
 images = load_images()
 
 if 'ureg' not in st.session_state:
     st.session_state['ureg'] = pint.UnitRegistry()
     st.session_state['ureg'].load_definitions(ROOT_PATH / 'data/pint_extra_units.txt')
+
+if 'valves' not in st.session_state:
+    st.session_state['valves'] = backend.load_valves(st.session_state['ureg'])
+
+if 'fluids' not in st.session_state:
+    st.session_state['fluids'] = backend.load_fluids(st.session_state['ureg'])
+
+if 'Reynolds_to_correction' not in st.session_state:
+    st.session_state['Reynolds_to_correction'] = backend.get_Reynolds_number_to_correction_factor(st.session_state['ureg'])
 
 #Key initialization
 
@@ -668,7 +677,7 @@ with separator_column:
     vertical_divider(height = 920)
 
 with input_column:
-    generate_header_and_dropdowns(valves, fluids)
+    generate_header_and_dropdowns()
     generate_all_input_fields()
 
 valve, fluid, flow, in_pressure, out_pressure, pressure_differential, diameter, temperature = assign_all_input_variables()
@@ -703,13 +712,12 @@ if st.session_state['rerun']: #Reruns on any text input or selection, to avoid i
 
 
 
-#seguir primero con el overwrite text inputs, después con el diameter selectbox, 
-#después el flujo general considerando las unidades, después ordenar la carpeta data, 
-#después agregar fluidos nuevos, después válvulas nuevas, 
-#y después todo lo demás (incluido gráfico y alineamiento)
+# --seguir primero con el overwrite text inputs-- , después con el diameter selectbox, 
+# después el flujo general considerando las unidades, después ordenar la carpeta data, 
+# después agregar fluidos nuevos, después válvulas nuevas, 
+# y después todo lo demás (incluido gráfico y alineamiento)
 
-
-
+# Mostrar números sin decimal 
 
 
 
