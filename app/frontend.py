@@ -19,7 +19,7 @@ LOGO_WIDTH = 200
 
 def float_cast(input):
     if isinstance(input, pint.Quantity):
-        return
+        return(input)
     try:
         return(float(input))
     except(ValueError, TypeError):
@@ -62,17 +62,20 @@ def init_session_state(defaults):
         if key not in st.session_state:
             st.session_state[key] = defaults[key]
 
+def init_session_state_dict(name, defaults):
+    if name not in st.session_state:
+        st.session_state[name] = {}
+        for key in defaults:
+            st.session_state[name][key] = defaults[key]
+
 def get_min_normal_max_casted_to_float(key):
     casted_vars = {'min': float_cast(st.session_state[key + '_mínimo']), 
                    'normal': float_cast(st.session_state[key + '_normal']), 
                    'max': float_cast(st.session_state[key + '_máximo'])}
     return(casted_vars)
 
-def assign_all_input_variables():
+def assign_out_pressure_and_pressure_differential():
 
-    valve = st.session_state['Válvula']
-    fluid = st.session_state['Fluido']
-    flow = get_min_normal_max_casted_to_float('Caudal')
     in_pressure = get_min_normal_max_casted_to_float('Presión de entrada')
 
     if st.session_state['Diferencia de presión_normal_is_disabled']:
@@ -82,6 +85,7 @@ def assign_all_input_variables():
         st.session_state['Diferencia de presión_mínimo'] = substract_handling_type(in_pressure['min'], out_pressure['min'])
         st.session_state['Diferencia de presión_normal'] = substract_handling_type(in_pressure['normal'], out_pressure['normal'])
         st.session_state['Diferencia de presión_máximo'] = substract_handling_type(in_pressure['max'], out_pressure['max'])
+        
         pressure_differential = get_min_normal_max_casted_to_float('Diferencia de presión')
 
     elif st.session_state['Presión de salida_normal_is_disabled']:
@@ -97,7 +101,16 @@ def assign_all_input_variables():
     else:
         out_pressure = get_min_normal_max_casted_to_float('Presión de salida')
         pressure_differential = get_min_normal_max_casted_to_float('Diferencia de presión')
+    
+    return(out_pressure, pressure_differential)
 
+def assign_all_input_variables():
+
+    valve = st.session_state['Válvula']
+    fluid = st.session_state['Fluido']
+    flow = get_min_normal_max_casted_to_float('Caudal')
+    in_pressure = get_min_normal_max_casted_to_float('Presión de entrada')
+    out_pressure, pressure_differential = assign_out_pressure_and_pressure_differential()
     diameter = float_cast(st.session_state['Diámetro nominal'])
     temperature = float_cast(st.session_state['Temperatura'])
     
@@ -184,7 +197,6 @@ def text_input_callback(callback, name, text_input_boxes_labels):
     if isinstance(unit, pint.Unit):
         for key in real_keys:
             magnitude = float_cast(st.session_state['_' + key])
-            print('\n\n\n\n', magnitude, '\n\n\n\n')
             if magnitude is None:
                 st.session_state[key] = None
             else:
@@ -193,18 +205,23 @@ def text_input_callback(callback, name, text_input_boxes_labels):
     callback()
     st.session_state['rerun'] = True
 
-def disable_pressure_differential(args): #Presión de salida callback
+def overwrite_out_pressure_and_pressure_differential():
+    for key in [name + '_' + quantity for name in ['Diferencia de presión', 'Presión de salida'] for quantity in ['mínimo', 'normal', 'máximo']]:
+        st.session_state['overwrite_text_input'][key] = True
+
+def disable_pressure_differential(): #Presión de salida callback
     
     is_disabled = False
     
     for key in ['_Presión de salida_mínimo', '_Presión de salida_normal', '_Presión de salida_máximo']:
-        if float_cast(st.session_state[key]) is not None: #Si al menos uno de los inputs es un float, desactivar los otros botones
+        if float_cast(st.session_state[key]) is not None: #Si al menos uno de los inputs es un float o quantity, desactivar los otros botones
             is_disabled = True
 
     for key in ['Diferencia de presión_mínimo', 'Diferencia de presión_normal', 'Diferencia de presión_máximo']:
         st.session_state[key + '_is_disabled'] = is_disabled
+        st.session_state['overwrite_text_input'][key] = True
 
-def disable_out_pressure(args): #Presión de salida callback
+def disable_out_pressure(): #Diferencia de presión callback
     
     is_disabled = False
     
@@ -214,8 +231,9 @@ def disable_out_pressure(args): #Presión de salida callback
 
     for key in ['Presión de salida_mínimo', 'Presión de salida_normal', 'Presión de salida_máximo']:
         st.session_state[key + '_is_disabled'] = is_disabled
+        st.session_state['overwrite_text_input'][key] = True
 
-def disable_some_data_inputs_if_fluid_is_selected(args): #Fluido callback
+def disable_some_data_inputs_if_fluid_is_selected(): #Fluido callback
 
     is_disabled = True
     fluid = st.session_state['Fluido']
@@ -255,12 +273,11 @@ def generate_input_field(name,
     number_of_text_inputs = len(text_input_boxes_labels)
     columns_spacing[1] = columns_spacing[1] * number_of_text_inputs
 
-    names_column, inputs_column, units_column = st.columns(columns_spacing)  # Las columnas se regeneran en cada fila (name) para alinear correctamente los nombres y los text input
+    names_column, inputs_column, units_column = st.columns(columns_spacing)  #Las columnas se regeneran en cada fila (name) para alinear correctamente los nombres y los text input
 
     with names_column:
         st.write(name)
 
-    overwrite_text_input = False
     with units_column:
         if units != []:
             unit_key = name + '_unit'
@@ -285,7 +302,7 @@ def generate_input_field(name,
                 if unit != old_unit:
                     if isinstance(st.session_state[key], pint.Quantity):
                         st.session_state[key] = st.session_state[key].to(unit)
-                        overwrite_text_input = True
+                        st.session_state['overwrite_text_input'][key] = True
 
             st.session_state[old_unit_key] = st.session_state[unit_key]
 
@@ -304,9 +321,13 @@ def generate_input_field(name,
                 if can_be_disabled:
                     disabled_state = st.session_state[key + '_is_disabled']
                 
-                if overwrite_text_input:
+                if st.session_state['overwrite_text_input'][key]:
+                    previous = st.session_state['_' + key]
                     if isinstance(st.session_state[key], pint.Quantity):
                         st.session_state['_' + key] = str(round(st.session_state[key].magnitude, 1))
+                    current = st.session_state['_' + key]
+                    if current != previous: #Try to overwrite until it actually changes. Useful to handle Streamlit flow.
+                        st.session_state['overwrite_text_input'][key] = False
 
                 st.session_state[key] = st.text_input(key, 
                                                         label_visibility = 'collapsed', 
@@ -467,7 +488,8 @@ def generate_all_input_fields():
     generate_input_field('Presión de entrada', 
                          ['PSIG'], 
                           text_input_boxes_labels = ['mínimo', 'normal', 'máximo'], 
-                          columns_spacing = [2, 1, 1])
+                          columns_spacing = [2, 1, 1], 
+                          callback = overwrite_out_pressure_and_pressure_differential)
 
     generate_input_field('Presión de salida', 
                          ['PSIG'], 
@@ -615,7 +637,7 @@ single_keys = single_names
 triple_names = ['Caudal', 'Presión de entrada', 'Presión de salida', 'Diferencia de presión']
 triple_keys = [name + '_' + quantity for name in triple_names for quantity in ['mínimo', 'normal', 'máximo']]
 
-widget_keys = ['_' + key for key in single_keys + triple_keys]
+#widget_keys = ['_' + key for key in single_keys + triple_keys]
 units_keys = [name + '_unit' for name in single_names + triple_names]
 old_units_keys = [key + '_old' for key in units_keys]
 disablers_keys = [key + '_is_disabled' for key in single_keys + triple_keys]
@@ -627,6 +649,11 @@ for key in disablers_keys:
     defaults[key] = False
 defaults['rerun'] = False
 init_session_state(defaults)
+
+defaults_overwrite = {}
+for key in single_keys + triple_keys:
+    defaults_overwrite[key] = False
+init_session_state_dict('overwrite_text_input', defaults_overwrite)
 
 
 #Frontend
