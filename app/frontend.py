@@ -133,7 +133,9 @@ def assign_database_variable(fluid, temperature, key):
     
     temperature_to_data = key_to_fluid_data[key]
     
-    available_temperatures = temperature_to_data.keys()
+    available_temperatures = list(temperature_to_data.keys())
+    available_temperatures
+    available_temperatures[2]
     closest_temperature = backend.closest_in_list(available_temperatures, temperature)
     data_value = temperature_to_data[closest_temperature]
     st.session_state[key] = data_value
@@ -280,6 +282,7 @@ def generate_input_field(name,
 
     with units_column:
         if units != []:
+            disabled_state_unit = True if len(units) == 1 else False
             unit_key = name + '_unit'
             old_unit_key = unit_key + '_old'
             ureg = st.session_state['ureg']
@@ -290,9 +293,10 @@ def generate_input_field(name,
                                                             placeholder = units[0], 
                                                             on_change = generic_callback, 
                                                             args = [do_nothing], 
-                                                            key='_' + unit_key)]
+                                                            disabled = disabled_state_unit, 
+                                                            key = '_' + unit_key)]
             unit = st.session_state[unit_key]
-            old_unit = st.session_state[old_unit_key]  
+            old_unit = st.session_state[old_unit_key]
 
             for label in text_input_boxes_labels:
                 if label != '':
@@ -339,7 +343,10 @@ def generate_input_field(name,
 
                 st.session_state[key] = float_cast(st.session_state[key])
                 if isinstance(st.session_state[key], float):
-                    st.session_state[key] = st.session_state[key] * unit
+                    try:
+                        st.session_state[key] = st.session_state[key] * unit
+                    except pint.errors.OffsetUnitCalculusError:
+                        st.session_state[key] = pint.Quantity(st.session_state[key], unit)
 
 def generate_output_field(name, 
                           values, 
@@ -411,16 +418,33 @@ def generate_dropdown_input_field(name,
                      key = key)
         
     with units_column:
-        if len(units) >= 2:
-            key = name + '_unit'
-            st.selectbox(key, 
-                         units, 
-                         label_visibility = 'collapsed', 
-                         accept_new_options = False, 
-                         placeholder = 'unidad', 
-                         key = key)
-        elif len(units) == 1:
-            st.write(units[0])
+        if units != []:
+            disabled_state_unit = True if len(units) == 1 else False
+            unit_key = name + '_unit'
+            old_unit_key = unit_key + '_old'
+            ureg = st.session_state['ureg']
+            st.session_state[unit_key] = ureg[st.selectbox(unit_key, 
+                                                            units, 
+                                                            label_visibility = 'collapsed', 
+                                                            accept_new_options = False, 
+                                                            placeholder = units[0], 
+                                                            on_change = generic_callback, 
+                                                            args = [do_nothing], 
+                                                            disabled = disabled_state_unit, 
+                                                            key = '_' + unit_key)]
+            unit = st.session_state[unit_key]
+            old_unit = st.session_state[old_unit_key]
+
+            if label != '':
+                key = name + '_' + label
+            else:
+                key = name
+            if unit != old_unit:
+                if isinstance(st.session_state[key], pint.Quantity):
+                    st.session_state[key] = st.session_state[key].to(unit) #BREAKS ON CHANGING DROPDOWN UNIT: DROPDOWN DOESNT HAVE NEW UNIT NUMBERS AS OPTIONS
+                    st.session_state['overwrite_text_input'][key] = True
+
+            st.session_state[old_unit_key] = st.session_state[unit_key]
 
 def generate_title_and_logo(images):
     title_column, logo_column = st.columns([3, 1])
@@ -623,12 +647,13 @@ def plot_opening_vs_flow(valve, diameter, pressure_differential, extra_openings,
 
 #-----------------------------------------------------------------------------------------------------------------------------------------------
 
-valves, fluids = backend.get_data()
 images = load_images()
 
 if 'ureg' not in st.session_state:
     st.session_state['ureg'] = pint.UnitRegistry()
     st.session_state['ureg'].load_definitions(ROOT_PATH / 'data/pint_extra_units.txt')
+
+valves, fluids = backend.get_data(st.session_state['ureg'])
 
 #Key initialization
 

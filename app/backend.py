@@ -8,6 +8,7 @@ from functools import lru_cache
 from math import sqrt
 from math import pi
 from math import log10
+import pint
 
 import streamlit as st
 
@@ -73,8 +74,14 @@ def invert_keys_and_values(original):
     return(inverted)
 
 def closest_in_list(values_list, number):
-    closest = min(values_list, key = lambda value: abs(value - number))
-    return(closest)
+    if isinstance(number, float):
+        closest = min(values_list, key = lambda value: abs(value - number))
+        return(closest)
+    elif isinstance(number, pint.Quantity):
+        if values_list[0].units == number.units: #If the elements of the list have the same unit as the number
+            closest = min(values_list, key = lambda value: abs(value.magnitude - number.magnitude)) #ABS FUNCIONA EN PINT!?
+            return(closest)
+    return(None)
 
 def items_just_below_and_just_above_in_list(number, values_list, default_below = None, default_above = None):
     below = max([value for value in values_list if value <= number], default = default_below)
@@ -119,21 +126,22 @@ def get_linear_approximation_from_dict(x_target,
     y_target = linear_approximation(x_target, x_below, y_below, x_above, y_above)
     return(y_target)
 
-def process_two_column_csv_to_dict(csv_path, target_dict, header = True):
+def process_two_column_csv_to_dict(csv_path, target_dict, first_col_unit = None, second_col_unit = None, header = True):
     with open(csv_path, mode ='r', encoding = 'utf-8') as file:
         csv_values = csv.reader(file)
         for line in csv_values:
             if header:
                 header = False
                 continue
-            key = float(line[0])
-            value = float(line[1])
+            key = pint.Quantity(float(line[0]), first_col_unit) if first_col_unit is not None else float(line[0])
+            print('\n\n\n', 'line: ', line, '\n\n\n')
+            value = pint.Quantity(float(line[1]), first_col_unit) if second_col_unit is not None else float([line[1]])
             target_dict[key] = value
 
 
 #Data processing
 
-def _load_valves():
+def _load_valves(ureg):
     
     valve_names = []
     with open(DATA_PATH / 'valve_names.csv', mode ='r', encoding = 'utf-8') as file:
@@ -174,7 +182,7 @@ def _load_valves():
     valves = sorted(Valve.all, key = lambda valve: clean_string(valve.name))
     return(valves)
 
-def _load_fluids():
+def _load_fluids(ureg):
 
     fluid_names = []
     with open(DATA_PATH / 'fluid_names.csv', mode ='r', encoding = 'utf-8') as file:
@@ -195,7 +203,8 @@ def _load_fluids():
         
         for path in paths_to_target_dicts:
             target = paths_to_target_dicts[path]
-            process_two_column_csv_to_dict(path, target)
+            print('\n\n\n', 'path: ', path, '\n\n\n')
+            process_two_column_csv_to_dict(path, target, first_col_unit = ureg.degC)
 
     fluids = sorted(Fluid.all, key = lambda fluid: clean_string(fluid.name))
 
@@ -225,8 +234,8 @@ def _get_noise_factor_C_data():
     return(noise_factor_C_not_cavitating, noise_factor_C_cavitating)
 
 @lru_cache(maxsize = 1)
-def get_data(edit_this_string_to_force_cache_clear_in_streamlit_cloud = 'v2'):
-    return(_load_valves(), _load_fluids())
+def get_data(ureg, edit_this_string_to_force_cache_clear_in_streamlit_cloud = 'v2'):
+    return(_load_valves(ureg), _load_fluids(ureg))
 
 
 #Sizing calculations
