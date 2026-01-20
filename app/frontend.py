@@ -134,8 +134,6 @@ def assign_database_variable(fluid, temperature, key):
     temperature_to_data = key_to_fluid_data[key]
     
     available_temperatures = list(temperature_to_data.keys())
-    available_temperatures
-    available_temperatures[2]
     closest_temperature = backend.closest_in_list(available_temperatures, temperature)
     data_value = temperature_to_data[closest_temperature]
     st.session_state[key] = data_value
@@ -158,7 +156,7 @@ def calculate_and_assign_all_output_variables(valve, flow, in_pressure, pressure
         Reynolds_number[quantity] = backend.calculate_Reynolds_number(flow[quantity], diameter, viscosity, valve)
         correction_factor[quantity] = backend.get_Reynolds_correction_factor(Reynolds_number[quantity])
         if Reynolds_number[quantity] is not None:
-            if Reynolds_number[quantity] < 1:
+            if Reynolds_number[quantity].magnitude < 1:
                 pass #WARNING FLUIDO DEMASIADO VISCOSO EN ESE DIÁMETRO Y CAUDAL #incluir para 10, 1, y 0.1
         Cv[quantity] = multiply_handling_type(correction_factor[quantity], backend.calculate_flow_coefficient_Cv(specific_gravity, flow[quantity], pressure_differential[quantity]))
         opening[quantity] = backend.calculate_opening_percentage_at_Cv(Cv[quantity], diameter, valve)

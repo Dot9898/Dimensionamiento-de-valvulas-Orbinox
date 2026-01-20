@@ -5,7 +5,6 @@ from pathlib import Path
 import csv
 from unidecode import unidecode
 from functools import lru_cache
-from math import sqrt
 from math import pi
 from math import log10
 import pint
@@ -134,8 +133,7 @@ def process_two_column_csv_to_dict(csv_path, target_dict, first_col_unit = None,
                 header = False
                 continue
             key = pint.Quantity(float(line[0]), first_col_unit) if first_col_unit is not None else float(line[0])
-            print('\n\n\n', 'line: ', line, '\n\n\n')
-            value = pint.Quantity(float(line[1]), first_col_unit) if second_col_unit is not None else float([line[1]])
+            value = pint.Quantity(float(line[1]), second_col_unit) if second_col_unit is not None else float(line[1])
             target_dict[key] = value
 
 
@@ -172,7 +170,7 @@ def _load_valves(ureg):
                     openings_percentages = list(map(float, line[1:]))
                     header = False
                     continue
-                diameter = float(line[0])
+                diameter = pint.Quantity(float(line[0]), ureg.inches)
                 valve.Cv[diameter] = {}
                 Cv_values = map(float, line[1:])
                 for opening, Cv in zip(openings_percentages, Cv_values):
@@ -203,7 +201,6 @@ def _load_fluids(ureg):
         
         for path in paths_to_target_dicts:
             target = paths_to_target_dicts[path]
-            print('\n\n\n', 'path: ', path, '\n\n\n')
             process_two_column_csv_to_dict(path, target, first_col_unit = ureg.degC)
 
     fluids = sorted(Fluid.all, key = lambda fluid: clean_string(fluid.name))
@@ -245,7 +242,7 @@ def calculate_flow_coefficient_Cv(specific_gravity,         #Dimensionless
                                   pressure_differential):   #PSIG
     if specific_gravity is None or flow is None or pressure_differential is None:
         return(None)
-    Cv = flow * sqrt(specific_gravity / pressure_differential)
+    Cv = flow * (specific_gravity / pressure_differential)**(1/2)
     return(Cv)
 
 def calculate_flow_from_Cv(Cv, 
@@ -268,9 +265,11 @@ def calculate_Reynolds_number(flow,        #GPM
 def get_Reynolds_correction_factor(Reynolds_number):
     if Reynolds_number is None:
         return(None)
-    if Reynolds_number > 4999.9:
+    if not isinstance(Reynolds_number, pint.Quantity):
+        raise TypeError('Input type must be pint.Quantity')
+    if Reynolds_number.magnitude > 4999.9:
         return(1.0)
-    if Reynolds_number < 0.011:
+    if Reynolds_number.magnitude < 0.011:
         return(240.0)
     Reynolds_to_correction = _get_Reynolds_number_to_correction_factor()
     correction_factor = get_linear_approximation_from_dict(Reynolds_number, Reynolds_to_correction)
@@ -281,6 +280,8 @@ def calculate_opening_percentage_at_Cv(Cv,         #GPM
                                        valve):
     if Cv is None or diameter is None or valve is None:
         return(None)
+    if not (isinstance(Cv, pint.Quantity) and isinstance(diameter, pint.Quantity)):
+        raise TypeError('Input type must be pint.Quantity')
     max_opening = max(valve.Cv[diameter].keys())
     if Cv > valve.Cv[diameter][max_opening]:
         return(999.0)
