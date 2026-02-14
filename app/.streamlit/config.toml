@@ -6,10 +6,15 @@ showErrorDetails = 'full'
 base = 'light'
 
 primaryColor = '#1F84B5'
-backgroundColor = 'aliceblue' #'#F2F2F2'
+backgroundColor = 'aliceblue'
 secondaryBackgroundColor = '#66c6f3fa'
-#'#0090D3'
-#'#1F84B5'
+#1 '#0090D3'
+#2 '#1F84B5'
+#alice bluer '#AEC6F7'
+#'#f0f8ff'
+#visual avg of 1 and 2 '#0F8BC8'
+#RGB exact avg of 1 and 2 '#108AC4'
+#orange to pair with alice bluer '#F2A65A'
 
 baseFontSize = 16
 baseFontWeight = 500

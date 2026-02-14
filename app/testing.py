@@ -13,11 +13,10 @@ old_unit = None
 
 if unit != old_unit:
     print('works')
-print(ureg['LPM'])
+#print(ureg['LPM'])
 
 
-
-
+print('Unidad presión de entrada' and 'Presión de entrada')
 
 
 

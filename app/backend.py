@@ -250,7 +250,7 @@ def calculate_flow_from_Cv(Cv,
                            pressure_differential):
     if Cv is None or specific_gravity is None or pressure_differential is None:
         return(None)
-    flow = Cv * sqrt(pressure_differential / specific_gravity)
+    flow = Cv * (pressure_differential / specific_gravity)**(1/2)
     return(flow)
 
 def calculate_Reynolds_number(flow,        #GPM
