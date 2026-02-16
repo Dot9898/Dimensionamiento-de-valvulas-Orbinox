@@ -1,3 +1,5 @@
 gallon_per_minute = gallon / minute = GPM
-@alias psi = PSIG = PSI
-absolute_pressure = PSIG; offset: 14.6959 = PSIA
+centistokes = stokes / 100 = cSt
+@alias psi = PSI
+relative_pressure = 1 * PSI; offset: 14.6959 = PSIG
+

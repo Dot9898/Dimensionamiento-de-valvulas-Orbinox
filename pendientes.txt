@@ -1,10 +1,11 @@
 unidades
 detalles gráfico
-Cambiar path valve data y fluid data
+agregar Otro fluido
 ruido
 flashing
 preguntar diámetros
 preguntar ángulos pequeños (hasta menores a 20 grados)
+AGREGAR MIN ANGLE ACCEPTED, DEPENDIENTE DE LA VÁLVULA
 preguntar gráfico diferencia de presión
 preguntar gráfico opción 2 (cubrir solo el rango requerido)
 preguntar erosión
@@ -20,3 +21,6 @@ error handling in Cv 0-10 and Fl 0-10
 arreglar formato p2 > p1
 agregar disclaimer para fluidos muy viscosos (reynolds number <10), hasta 20% de error en el factor de corrección
 glosario con nombres de variables Q FL Cv etc
+unidades offset psia
+
+eliminar utf8?

@@ -655,28 +655,29 @@ valves, fluids = backend.get_data(st.session_state['ureg'])
 
 #Key initialization
 
-single_names = ['Válvula', 'Fluido', 'Diámetro nominal', 'Temperatura', 'Gravedad específica', 'Presión de vapor', 'Viscosidad', 'Velocidad del sonido']
-single_keys = single_names
-triple_names = ['Caudal', 'Presión de entrada', 'Presión de salida', 'Diferencia de presión']
-triple_keys = [name + '_' + quantity for name in triple_names for quantity in ['mínimo', 'normal', 'máximo']]
+if True:
+    single_names = ['Válvula', 'Fluido', 'Diámetro nominal', 'Temperatura', 'Gravedad específica', 'Presión de vapor', 'Viscosidad', 'Velocidad del sonido']
+    single_keys = single_names
+    triple_names = ['Caudal', 'Presión de entrada', 'Presión de salida', 'Diferencia de presión']
+    triple_keys = [name + '_' + quantity for name in triple_names for quantity in ['mínimo', 'normal', 'máximo']]
 
-#widget_keys = ['_' + key for key in single_keys + triple_keys]
-units_keys = [name + '_unit' for name in single_names + triple_names]
-old_units_keys = [key + '_old' for key in units_keys]
-disablers_keys = [key + '_is_disabled' for key in single_keys + triple_keys]
+    #widget_keys = ['_' + key for key in single_keys + triple_keys]
+    units_keys = [name + '_unit' for name in single_names + triple_names]
+    old_units_keys = [key + '_old' for key in units_keys]
+    disablers_keys = [key + '_is_disabled' for key in single_keys + triple_keys]
 
-defaults = {}
-for key in single_keys + triple_keys + units_keys + old_units_keys:
-    defaults[key] = None
-for key in disablers_keys:
-    defaults[key] = False
-defaults['rerun'] = False
-init_session_state(defaults)
+    defaults = {}
+    for key in single_keys + triple_keys + units_keys + old_units_keys:
+        defaults[key] = None
+    for key in disablers_keys:
+        defaults[key] = False
+    defaults['rerun'] = False
+    init_session_state(defaults)
 
-defaults_overwrite = {}
-for key in single_keys + triple_keys:
-    defaults_overwrite[key] = False
-init_session_state_dict('overwrite_text_input', defaults_overwrite)
+    defaults_overwrite = {}
+    for key in single_keys + triple_keys:
+        defaults_overwrite[key] = False
+    init_session_state_dict('overwrite_text_input', defaults_overwrite)
 
 
 #Frontend
