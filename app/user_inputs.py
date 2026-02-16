@@ -6,7 +6,7 @@ import pint
 from unit_registry import ureg
 from constants import UNITS_AS_STRING, BASE_UNITS
 from load_data import VALVES, FLUIDS
-from backend2 import in_base_unit, get_dimensionable_and_available_diameters
+from backend import in_base_unit, get_dimensionable_and_available_diameters
 from callbacks import update_number_inputs, update_fluid_values_boxes, update_diameter_dropdown_value
 
 

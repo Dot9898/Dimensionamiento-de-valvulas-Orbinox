@@ -4,7 +4,7 @@
 import streamlit as st
 import pint ##?
 import plotly.graph_objects as go
-import backend2
+import backend
 import callbacks
 from unit_registry import ureg ###
 from constants import DEFAULTS, IMAGES
@@ -150,9 +150,9 @@ def generate_all_input_fields():
     
     return(inputs)
 
-def generate_all_output_fields(dimensionamientos: list[backend2.Dimensionamiento]):
+def generate_all_output_fields(dimensionamientos: list[backend.Dimensionamiento]):
 
-    backend2.set_all_output_values(dimensionamientos)
+    backend.set_all_output_values(dimensionamientos)
 
     generate_multiple_inputs(written_name = 'Caudal', 
                              quantity_name = 'Caudal', 
@@ -204,7 +204,7 @@ def write_flags_text(flags: list[str]):
     for flag in flags:
         st.write(f'-{flag_text[flag]}')
 
-def write_all_flags_text(dimensionamientos: list[backend2.Dimensionamiento]):
+def write_all_flags_text(dimensionamientos: list[backend.Dimensionamiento]):
 
     all_flags = {}
     for index in range(3):
@@ -221,7 +221,7 @@ def write_all_flags_text(dimensionamientos: list[backend2.Dimensionamiento]):
             st.write(f'Para las condiciones de la {TO_COLUMN[index]} columna:')
             write_flags_text(all_flags[index])
     
-def plot_opening_vs_flow(dimensionamientos: list[backend2.Dimensionamiento]):
+def plot_opening_vs_flow(dimensionamientos: list[backend.Dimensionamiento]):
     valve = dimensionamientos[0].valve
     diameter = dimensionamientos[0].diameter
     if valve is None or diameter is None:
@@ -261,7 +261,7 @@ def plot_opening_vs_flow(dimensionamientos: list[backend2.Dimensionamiento]):
 
 
 
-backend2.init_session_state(DEFAULTS)
+backend.init_session_state(DEFAULTS)
 
 st.set_page_config(layout = 'wide')
 
@@ -275,8 +275,8 @@ with separator_column:
 with input_column:
     st.subheader('Condiciones de trabajo')
     inputs = generate_all_input_fields()
-    inputs = backend2.process_inputs(inputs)
-    dimensionamientos = backend2.get_dimensionamientos_from_triple_inputs(inputs)
+    inputs = backend.process_inputs(inputs)
+    dimensionamientos = backend.get_dimensionamientos_from_triple_inputs(inputs)
 
 with output_column:
     st.subheader('Dimensionamiento')
