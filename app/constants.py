@@ -33,12 +33,15 @@ DEFAULTS = {'old_values': {}, #old_values always has pint quantities
             'Viscosidad 0 is disabled': True, 
             'Velocidad del sonido 0 is disabled': True}
 
-UNITS_AS_STRING = {'Caudal': ('L/min', 'GPM', 'm³/h'), 
-                   'Presión': ('PSI', 'bar'), 
-                   'Temperatura': ('°C', '°F', '°K'), 
-                   'Gravedad específica': ('dimensionless'), 
-                   'Viscosidad': 'cSt', 
-                   'Velocidad del sonido': ('m/s', 'ft/s', 'km/h', 'mph')} #Each unit is readable by an ureg call: ureg('m³/h'). The first unit is the canonical one.
+UNITS_AS_STRING = {'Caudal': ['m³/h', 'L/min', 'GPM'], 
+                   'Presión': ['PSI', 'bar'], 
+                   'Temperatura': ['°C', '°F', '°K'], 
+                   'Gravedad específica': ['dimensionless'], 
+                   'Viscosidad': ['cSt'], 
+                   'Velocidad': ['m/s', 'ft/s', 'km/h', 'mph'], 
+                   'Apertura': ['%'], 
+                   'Cv': ['Cv'], 
+                   'Ruido': ['dB']} #Each unit is readable by an ureg call: ureg('m³/h'). The first unit is the canonical one.
 
 BASE_UNITS = {'Caudal': 'GPM', 
               'Presión': 'PSI', 
@@ -46,7 +49,11 @@ BASE_UNITS = {'Caudal': 'GPM',
               'Gravedad específica': 'dimensionless', 
               'Presión de vapor': 'PSI', 
               'Viscosidad': 'cSt', 
-              'Velocidad del sonido': 'ft/s'}
+              'Velocidad': 'ft/s', 
+              'Velocidad del sonido': 'ft/s', 
+              'Apertura': '%', 
+              'Cv': 'Cv', 
+              'Ruido': 'dB'}
 
 QUANTITY_NAME_TO_ATTRIBUTE_NAME = {'Gravedad específica': 'specific_gravity', 
                                    'Presión de vapor': 'vapor_pressure', 

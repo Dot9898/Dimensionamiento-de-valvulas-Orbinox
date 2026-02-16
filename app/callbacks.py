@@ -105,6 +105,15 @@ def update_pressure_differential_and_out_pressure_value(index):
     if st.session_state.get(f'{out_pressure_key} is disabled', False):
         update_out_pressure_value(index)
 
+def update_diameter_dropdown_value():
+    if 'Diámetro' not in st.session_state['old_values']:
+        return()
+    old_value = st.session_state['old_values']['Diámetro']
+    if st.session_state['Diámetro unidad'] == 'mm': #De inch a mm
+        new_value = old_value * 25
+    if st.session_state['Diámetro unidad'] == 'in': #De mm a inch
+        new_value = int(old_value / 25)
+    st.session_state['Diámetro'] = new_value
 
 def fill_fluid_values(fluid: Fluid, index):
     temperature = backend2.in_base_unit('Temperatura', 'Temperatura 0', 'Temperatura unidad')

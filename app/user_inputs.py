@@ -7,7 +7,7 @@ from unit_registry import ureg
 from constants import UNITS_AS_STRING, BASE_UNITS
 from load_data import VALVES, FLUIDS
 from backend2 import in_base_unit, get_dimensionable_and_available_diameters
-from callbacks import update_number_inputs, update_fluid_values_boxes
+from callbacks import update_number_inputs, update_fluid_values_boxes, update_diameter_dropdown_value
 
 
 def generate_valve_and_fluid_dropdowns(valves: dict, fluids: dict):
@@ -51,11 +51,15 @@ def generate_unit_input(quantity_name,
                         callback = update_number_inputs):
     
     available_units = UNITS_AS_STRING[quantity_name]
+    is_disabled = False
+    if len(available_units) == 1:
+        is_disabled = True
     kwargs = {'unit_key': unit_key, 'associated_keys': associated_number_input_keys}
 
     st.selectbox(label = unit_key, 
                  key = unit_key, 
                  options = available_units, 
+                 disabled = is_disabled, 
                  on_change = callback, 
                  kwargs = kwargs, 
                  index = 0, 
@@ -68,6 +72,7 @@ def generate_number_input(quantity_name,
                           placeholder: str | None = None, 
                           decimals = 1, 
                           inputs_range = (None, None), 
+                          disabled = False, 
                           callback = lambda: None, 
                           kwargs = None):
 
@@ -86,7 +91,10 @@ def generate_number_input(quantity_name,
         except pint.errors.OffsetUnitCalculusError:
             max_value = float((pint.Quantity(max_value, base_unit).to(current_unit)).magnitude)
 
-    is_disabled = st.session_state.get(f'{key} is disabled', False)
+    if disabled:
+        is_disabled = True
+    else:
+        is_disabled = st.session_state.get(f'{key} is disabled', False)
 
     st.number_input(label = key, 
                     key = key, 
@@ -113,6 +121,7 @@ def generate_multiple_inputs(written_name,
                              decimals = 0, 
                              inputs_range = (None, None), 
                              placeholders: list[str] | None = None, 
+                             disabled = False, 
                              spacing = [2, 3, 1], 
                              number_input_callback = lambda **kwargs: None, 
                              number_input_kwargs = {}):
@@ -143,13 +152,14 @@ def generate_multiple_inputs(written_name,
                 actual_kwargs = dict(number_input_kwargs) #Creates a copy so it doesn't just take the last index value
                 actual_kwargs['index'] = index
                 quantities_in_base_unit[index] = generate_number_input(quantity_name, 
-                                                 key, 
-                                                 unit_key, 
-                                                 placeholder, 
-                                                 decimals = decimals, 
-                                                 inputs_range = inputs_range, 
-                                                 callback = number_input_callback, 
-                                                 kwargs = actual_kwargs)
+                                                                       key, 
+                                                                       unit_key, 
+                                                                       placeholder, 
+                                                                       decimals = decimals, 
+                                                                       inputs_range = inputs_range, 
+                                                                       disabled = disabled, 
+                                                                       callback = number_input_callback, 
+                                                                       kwargs = actual_kwargs)
     
     return(quantities_in_base_unit) #CAMBIAR LO QUE RETORNA, QUEREMOS TRABAJAR CON UNIDADES? O PLAIN FLOAT?
 
@@ -163,8 +173,7 @@ def generate_diameter_input_line(valve): #Quick patch to use it only on diameter
         st.selectbox(label = 'Diámetro unidad', 
                      key = 'Diámetro unidad', 
                      options = ['mm', 'in'], 
-                     #on_change = callback,   #en vola un rerun?
-                     #kwargs = kwargs, 
+                     on_change = update_diameter_dropdown_value,
                      index = 0, 
                      accept_new_options = False, 
                      label_visibility = 'collapsed')
@@ -186,6 +195,12 @@ def generate_diameter_input_line(valve): #Quick patch to use it only on diameter
                                 placeholder = '', 
                                 accept_new_options = False, 
                                 label_visibility = 'collapsed')
+        
+        st.session_state['old_values']['Diámetro'] = diameter
+        
+        if diameter is not None:
+            if st.session_state['Diámetro unidad'] == 'mm':
+                diameter = float(diameter/25)
     
     return(diameter)
 

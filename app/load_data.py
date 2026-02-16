@@ -8,6 +8,8 @@ from constants import DATA_PATH
 
 class Fluid:
 
+    Reynolds_correction_factor: pd.DataFrame | None = None
+
     def __init__(self, name, specific_gravity, vapor_pressure, viscosity, speed_of_sound):
         self.name = name
         self.specific_gravity: pd.DataFrame = specific_gravity
@@ -24,11 +26,13 @@ class Valve:
     critical_pressure_ratios = {'Pinch PA': 0.94}
     max_velocities_without_erosion = {'Pinch PA': 22.0}
 
-    def __init__(self, name, FL, Cv, available_diameters, Reynolds_factor, critical_pressure_ratio, max_velocity_without_erosion):
+    def __init__(self, name, style, FL, Cv, available_diameters, max_opening, Reynolds_factor, critical_pressure_ratio, max_velocity_without_erosion):
         self.name = name
+        self.style = style
         self.Cv: pd.DataFrame = Cv #valve.Cv[diameter][opening] = Cv
         self.FL: pd.DataFrame = FL #opening vs FL
         self.available_diameters: list = available_diameters
+        self.max_opening = max_opening
         self.Reynolds_factor = Reynolds_factor
         self.critical_pressure_ratio = critical_pressure_ratio
         self.max_velocity_without_erosion = max_velocity_without_erosion
@@ -39,6 +43,12 @@ class Valve:
 
 @st.cache_resource
 def load_fluids():
+    Reynolds_correction = pd.read_csv(DATA_PATH / 'fluids' / 'Reynolds_correction_factor.csv', 
+                                      dtype = float, 
+                                      header = 0, 
+                                      names = ['Reynolds_number', 'correction_factor'])
+    Fluid.Reynolds_correction_factor = Reynolds_correction
+
     fluids = {}
     for fluid_name in ['Agua']:
         dfs = []
@@ -47,7 +57,7 @@ def load_fluids():
                              dtype = float, 
                              header = 0, 
                              names = ['temperature', quantity])
-            df.sort_values(by = 'temperature')
+            df.sort_values(by = 'temperature', inplace = True)
             dfs.append(df)
         fluid = Fluid(fluid_name, dfs[0], dfs[1], dfs[2], dfs[3])
         fluids[fluid_name] = fluid
@@ -57,7 +67,7 @@ def load_fluids():
 @st.cache_resource
 def load_valves():
     valves = {}
-    for valve_name in ['PA']:
+    for valve_name in ['BIANCA', 'PA']:
 
         Cv = pd.read_csv(DATA_PATH / 'valves' / valve_name / 'Cv.csv', 
                          dtype = float, 
@@ -70,7 +80,7 @@ def load_valves():
                          dtype = float, 
                          header = 0, 
                          names = ['opening', 'FL'])
-        FL.sort_values(by = 'opening')
+        FL.sort_values(by = 'opening', inplace = True)
 
         diameters_df = pd.read_csv(DATA_PATH / 'valves' / valve_name / 'available_diameters.csv', 
                                 dtype = float, 
@@ -79,14 +89,15 @@ def load_valves():
         available_diameters = list(diameters_df['available_diameters'])
 
         constants_df = pd.read_csv(DATA_PATH / 'valves' / valve_name / 'constants.csv', 
-                                dtype = float, 
                                 header = 0)
         constants = list(constants_df.iloc[0])
         critical_pressure_ratio = constants[0]
         Reynolds_factor = constants[1]
         max_velocity_without_erosion = constants[2]
+        max_opening = constants[3]
+        style = constants[4]
 
-        valve = Valve(valve_name, FL, Cv, available_diameters, Reynolds_factor, critical_pressure_ratio, max_velocity_without_erosion)
+        valve = Valve(valve_name, style, FL, Cv, available_diameters, max_opening, Reynolds_factor, critical_pressure_ratio, max_velocity_without_erosion)
         valves[valve_name] = valve
     
     return(valves)

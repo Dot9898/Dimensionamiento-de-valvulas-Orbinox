@@ -1,5 +1,7 @@
 gallon_per_minute = gallon / minute = GPM
 centistokes = stokes / 100 = cSt
 @alias psi = PSI
+Cv = minute / minute
+Kv = 0.865 * minute / minute
 relative_pressure = 1 * PSI; offset: 14.6959 = PSIG
 

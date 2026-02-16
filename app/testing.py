@@ -1,6 +1,6 @@
 
-import pint
-from unit_registry import ureg
+#import pint
+#from unit_registry import ureg
 
 #quantity = 25 * ureg.meter
 #quantity = quantity.to(ureg.ft)
@@ -17,16 +17,30 @@ from unit_registry import ureg
 
 #print('Unidad presión de entrada' and 'Presión de entrada')
 
-import pint
-from unit_registry import ureg
+#import pint
+#from unit_registry import ureg
 
-orig = pint.Quantity(20, ureg('°C'))
-print(orig)
+#orig = pint.Quantity(20, ureg('°C'))
+#print(orig)
 
-offset = orig.to(ureg('°C'))
-print(offset)
+#offset = orig.to(ureg('°C'))
+#print(offset)
 
-orig = offset.to(ureg('°C'))
-print(orig)
+#orig = offset.to(ureg('°C'))
+#print(orig)
+
+#for t in range(-20, 410, 20):
+#    sg = round(1.8437 - 0.00094 * (t - 15.6), 4)
+#    print(f'{t},{sg}')
+
+
+import pandas as pd
+from constants import DATA_PATH
+
+df = pd.read_csv(DATA_PATH / 'valves' / 'BIANCA' / 'Cv.csv', delim_whitespace=True)
+df = df.set_index('DN')
+df.index = (df.index/25).astype(int)
+df = round(df*1.16).astype(int)
+df.to_csv('output.csv')
 
 
