@@ -1,23 +1,13 @@
-unidades
-detalles gráfico
+
 agregar Otro fluido
 ruido
 flashing
-preguntar diámetros
-preguntar ángulos pequeños (hasta menores a 20 grados)
+agregar diámetros decimales y cambiar el #1 de bianca, revisar las otras
 AGREGAR MIN ANGLE ACCEPTED, DEPENDIENTE DE LA VÁLVULA
-preguntar gráfico diferencia de presión
-preguntar gráfico opción 2 (cubrir solo el rango requerido)
-preguntar erosión
-agregar alguna forma de que la unidad sea un factor que se aplica al momento de asignar el st session state
 
-que valvula y fluido sea lo primero a seleccionar
-Arreglar alineación texto y unidades c text input
+que valvula y fluido sea lo primero a seleccionar?
+Arreglar alineación nombres c text input
 agregar disclaimer valores válidos solo para temperaturas entre 0 y 200
-arreglar backend valve processing y reynolds factors
-hacer aproximaciones lineales para datos de database
-too low and too high Cv handling in items_just_below_and_just_above_in_list (nota válvula no sirve y poner los menores disponibles en 10 y 100 de apertura?) POR AHORA HAY UN HANDLING GENERICO DE NONE, EL ERROR ES SILENCIOSO
-error handling in Cv 0-10 and Fl 0-10
 arreglar formato p2 > p1
 agregar disclaimer para fluidos muy viscosos (reynolds number <10), hasta 20% de error en el factor de corrección
 glosario con nombres de variables Q FL Cv etc

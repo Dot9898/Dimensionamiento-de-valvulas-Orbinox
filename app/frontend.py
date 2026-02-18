@@ -69,6 +69,8 @@ def generate_all_input_fields():
     inputs['valve'] = valve
     inputs['fluid'] = fluid
 
+    inputs['diameter'] = generate_diameter_input_line(valve)
+
     inputs['flow'] = generate_multiple_inputs(written_name = 'Caudal', 
                                               quantity_name = 'Caudal', 
                                               base_key = 'Caudal', 
@@ -103,8 +105,6 @@ def generate_all_input_fields():
                                                                inputs_range = (0, None), #max pressure diff es presión de entrada
                                                                placeholders = ['mínimo', 'normal', 'máximo'], 
                                                                number_input_callback = callbacks.set_out_pressure_box)
-
-    inputs['diameter'] = generate_diameter_input_line(valve)
 
     inputs['temperature'] = generate_multiple_inputs(written_name = 'Temperatura', 
                                                      quantity_name = 'Temperatura', 
@@ -198,8 +198,8 @@ def generate_all_output_fields(dimensionamientos: list[backend.Dimensionamiento]
 
 def write_flags_text(flags: list[str]):
     flag_text = {'opening_too_big': 'La válvula es demasiado pequeña para alcanzar ese caudal con esas condiciones de trabajo.', 
-                 'opening_too_small': 'La válvula trabaja con un ángulo o porcentaje de abertura menor a 10%. Para durabilidad y seguridad se recomienda trabajo entre 20% y 80%.', 
-                 'is_cavitating': 'El fluido cavita', 
+                 'opening_too_small': 'La válvula trabaja con un ángulo o porcentaje de abertura menor a 20%. Para durabilidad y seguridad se recomienda trabajo entre 20% y 80%.', 
+                 'is_cavitating': 'La diferencia de presión es demasiado grande para las condiciones de trabajo, el fluido cavita', 
                  'is_eroding': 'La velocidad del fluido genera erosión en la válvula'}
     for flag in flags:
         st.write(f'-{flag_text[flag]}')

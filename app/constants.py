@@ -24,6 +24,8 @@ ROOT_PATH = Path(__file__).resolve().parent.parent
 IMG_PATH = ROOT_PATH / 'img'
 DATA_PATH = ROOT_PATH / 'data'
 
+CAVITATION_SAFETY_FACTOR = 0.8 #Multiplied by allowable pressure differential
+
 IMAGES = load_images()
 
 DEFAULTS = {'old_values': {}, #old_values always has pint quantities

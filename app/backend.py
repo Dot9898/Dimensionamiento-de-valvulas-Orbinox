@@ -6,7 +6,7 @@ import pint
 import numpy as np
 from math import pi as PI
 from unit_registry import ureg
-from constants import BASE_UNITS
+from constants import BASE_UNITS, CAVITATION_SAFETY_FACTOR
 from load_data import Valve, VALVES, Fluid
 
 class Dimensionamiento:
@@ -103,6 +103,8 @@ class Dimensionamiento:
             return(None)
         
         allowable_pressure_differential = self.FL**2 * (self.in_pressure + 14.7 - self.valve.critical_pressure_ratio * self.vapor_pressure)
+        allowable_pressure_differential = CAVITATION_SAFETY_FACTOR * allowable_pressure_differential
+        allowable_pressure_differential = max(allowable_pressure_differential, 0.0)
         return(allowable_pressure_differential)
 
     def calculate_in_velocity(self):

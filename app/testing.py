@@ -37,10 +37,8 @@
 import pandas as pd
 from constants import DATA_PATH
 
-df = pd.read_csv(DATA_PATH / 'valves' / 'BIANCA' / 'Cv.csv', delim_whitespace=True)
-df = df.set_index('DN')
-df.index = (df.index/25).astype(int)
-df = round(df*1.16).astype(int)
+df = pd.read_csv(DATA_PATH / 'valves' / 'HPBV' / 'Cv.csv', delim_whitespace=True)
+df.set_index('INCH')
 df.to_csv('output.csv')
 
 

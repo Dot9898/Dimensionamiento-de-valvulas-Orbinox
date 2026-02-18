@@ -106,7 +106,7 @@ def update_pressure_differential_and_out_pressure_value(index):
         update_out_pressure_value(index)
 
 def update_diameter_dropdown_value():
-    if 'Diámetro' not in st.session_state['old_values']:
+    if st.session_state['old_values']['Diámetro'] is None:
         return()
     old_value = st.session_state['old_values']['Diámetro']
     if st.session_state['Diámetro unidad'] == 'mm': #De inch a mm

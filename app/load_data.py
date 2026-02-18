@@ -22,10 +22,6 @@ class Fluid:
 
 class Valve:
 
-    Reynolds_factors = {'Pinch PA': 1.0}
-    critical_pressure_ratios = {'Pinch PA': 0.94}
-    max_velocities_without_erosion = {'Pinch PA': 22.0}
-
     def __init__(self, name, style, FL, Cv, available_diameters, max_opening, Reynolds_factor, critical_pressure_ratio, max_velocity_without_erosion):
         self.name = name
         self.style = style
@@ -67,7 +63,12 @@ def load_fluids():
 @st.cache_resource
 def load_valves():
     valves = {}
-    for valve_name in ['BIANCA', 'PA']:
+
+    valve_names = pd.read_csv(DATA_PATH / 'valves' / 'valve_names.csv', 
+                              header = None)
+    valve_names = list(valve_names.iloc[:, 0])
+    
+    for valve_name in valve_names:
 
         Cv = pd.read_csv(DATA_PATH / 'valves' / valve_name / 'Cv.csv', 
                          dtype = float, 

@@ -4,3 +4,5 @@ unidecode
 plotly
 orjson
 pint
+pandas
+numpy
